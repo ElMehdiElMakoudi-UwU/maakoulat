@@ -1,7 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  // Sortie autonome : image Docker légère, démarrée par `node server.js`.
+  output: "standalone",
 };
 
 export default nextConfig;

@@ -7,17 +7,41 @@ import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/lib/i18n";
 import LangToggle from "@/components/LangToggle";
 
-const NAV = [
-  { href: "/", key: "nav_dashboard", icon: "📊" },
-  { href: "/ventes", key: "nav_sales", icon: "🧾" },
-  { href: "/journal", key: "nav_history", icon: "📖" },
-  { href: "/analyse", key: "nav_analysis", icon: "📈" },
-  { href: "/tresorerie", key: "nav_treasury", icon: "💰" },
-  { href: "/rapports", key: "nav_reports", icon: "📄" },
-  { href: "/produits", key: "nav_products", icon: "📦" },
-  { href: "/fournisseurs", key: "nav_suppliers", icon: "🚚" },
-  { href: "/bons-commande", key: "nav_orders", icon: "📝" },
-  { href: "/charges", key: "nav_charges", icon: "💸" },
+const NAV_GROUPS = [
+  {
+    key: "nav_group_main",
+    items: [
+      { href: "/", key: "nav_dashboard", icon: "📊" },
+      { href: "/ventes", key: "nav_sales", icon: "🧾" },
+      { href: "/journal", key: "nav_history", icon: "📖" },
+      { href: "/analyse", key: "nav_analysis", icon: "📈" },
+      { href: "/rapports", key: "nav_reports", icon: "📄" },
+    ],
+  },
+  {
+    key: "nav_group_finance",
+    items: [
+      { href: "/tresorerie", key: "nav_treasury", icon: "💰" },
+      { href: "/banque", key: "nav_bank", icon: "🏦" },
+      { href: "/charges", key: "nav_charges", icon: "💸" },
+      { href: "/ventilation", key: "nav_ventilation", icon: "🧮" },
+    ],
+  },
+  {
+    key: "nav_group_docs",
+    items: [
+      { href: "/factures", key: "nav_invoices", icon: "📑" },
+      { href: "/bons-commande", key: "nav_orders", icon: "📝" },
+    ],
+  },
+  {
+    key: "nav_group_directory",
+    items: [
+      { href: "/produits", key: "nav_products", icon: "📦" },
+      { href: "/fournisseurs", key: "nav_suppliers", icon: "🚚" },
+      { href: "/clients", key: "nav_clients", icon: "👥" },
+    ],
+  },
 ];
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
@@ -47,20 +71,27 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       {/* Sidebar (desktop) */}
       <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-e border-border bg-surface p-4 md:flex">
         <Brand />
-        <nav className="mt-6 flex flex-1 flex-col gap-1">
-          {NAV.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition ${
-                isActive(item.href)
-                  ? "bg-primary text-primary-fg"
-                  : "text-foreground hover:bg-background"
-              }`}
-            >
-              <span>{item.icon}</span>
-              {t(item.key)}
-            </Link>
+        <nav className="mt-6 flex flex-1 flex-col gap-4 overflow-y-auto">
+          {NAV_GROUPS.map((group) => (
+            <div key={group.key} className="flex flex-col gap-1">
+              <div className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-wide text-muted">
+                {t(group.key)}
+              </div>
+              {group.items.map((item) => (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition ${
+                    isActive(item.href)
+                      ? "bg-primary text-primary-fg"
+                      : "text-foreground hover:bg-background"
+                  }`}
+                >
+                  <span>{item.icon}</span>
+                  {t(item.key)}
+                </Link>
+              ))}
+            </div>
           ))}
         </nav>
         <div className="mt-auto flex items-center justify-between gap-2 border-t border-border pt-4">
@@ -92,17 +123,24 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
         {mobileOpen && (
           <nav className="grid grid-cols-2 gap-2 border-b border-border bg-surface p-3 md:hidden">
-            {NAV.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={`flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium ${
-                  isActive(item.href) ? "bg-primary text-primary-fg" : "bg-background"
-                }`}
-              >
-                <span>{item.icon}</span>
-                {t(item.key)}
-              </Link>
+            {NAV_GROUPS.map((group) => (
+              <div key={group.key} className="contents">
+                <div className="col-span-2 px-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-muted">
+                  {t(group.key)}
+                </div>
+                {group.items.map((item) => (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className={`flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium ${
+                      isActive(item.href) ? "bg-primary text-primary-fg" : "bg-background"
+                    }`}
+                  >
+                    <span>{item.icon}</span>
+                    {t(item.key)}
+                  </Link>
+                ))}
+              </div>
             ))}
             <button
               onClick={logout}
