@@ -93,6 +93,23 @@ export const DICT: Dict = {
   // Produits
   products_title: { fr: "Catalogue produits", ar: "كتالوج المنتجات" },
   add_product: { fr: "Ajouter un produit", ar: "إضافة منتج" },
+  import_csv: { fr: "Importer un CSV", ar: "استيراد CSV" },
+  download_template: { fr: "Modèle CSV", ar: "نموذج CSV" },
+  import_preview: { fr: "Aperçu de l'import", ar: "معاينة الاستيراد" },
+  import_hint: {
+    fr: "Colonnes du fichier : name, name_fr, category, unit, purchase_price, sale_price, vat_rate, supplier. Seule « name » est obligatoire ; l'ordre est libre. Le fournisseur est rattaché s'il existe déjà (même nom). Les produits déjà présents (même nom) sont ignorés.",
+    ar: "أعمدة الملف: name، name_fr، category، unit، purchase_price، sale_price، vat_rate، supplier. « name » وحده إلزامي والترتيب حر. يُربط المورد إن كان موجودا (نفس الاسم). المنتجات الموجودة (نفس الاسم) تُتجاهل.",
+  },
+  import_bad_header: {
+    fr: "En-tête introuvable. Le fichier doit avoir une ligne d'en-tête avec au moins une colonne « name ». Téléchargez le modèle.",
+    ar: "لم يُعثر على سطر العناوين. يجب أن يحتوي الملف على سطر عناوين به على الأقل عمود « name ». حمّل النموذج.",
+  },
+  import_new_count: { fr: "nouveaux produits", ar: "منتجات جديدة" },
+  import_dup_skipped: { fr: "déjà présents (ignorés)", ar: "موجودة سابقا (مُتجاهَلة)" },
+  import_confirm: { fr: "Importer", ar: "استيراد" },
+  importing: { fr: "Import en cours…", ar: "جاري الاستيراد…" },
+  import_empty: { fr: "Aucun produit trouvé dans ce fichier.", ar: "لم يُعثر على منتجات في هذا الملف." },
+  import_done: { fr: "produits importés ✓", ar: "منتجات مستوردة ✓" },
 
   // Fournisseurs
   suppliers_title: { fr: "Fournisseurs & paiements", ar: "الموردون والمدفوعات" },

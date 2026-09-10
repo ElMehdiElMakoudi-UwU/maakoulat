@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/lib/i18n";
 import { fmtNum, fmtPct } from "@/lib/format";
+import { parseProductsCsv, buildTemplateCsv, type ParsedProductRow } from "@/lib/productImport";
 import type { Product, Seller, Supplier } from "@/lib/types";
 
 export default function ProduitsPage() {
@@ -18,6 +19,11 @@ export default function ProduitsPage() {
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
   const [form, setForm] = useState({ name: "", designation: "", category: "", unit: "", pa: "", pv: "", vat: "", supplier: "" });
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [importRows, setImportRows] = useState<ParsedProductRow[] | null>(null);
+  const [importErr, setImportErr] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [importMsg, setImportMsg] = useState("");
 
   useEffect(() => {
     (async () => {
@@ -109,17 +115,180 @@ export default function ProduitsPage() {
     setProducts((old) => old.filter((x) => x.id !== p.id));
   }
 
+  function downloadTemplate() {
+    const blob = new Blob([buildTemplateCsv()], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "modele-produits.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function onImportFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setImportMsg("");
+    setImportErr(false);
+    const reader = new FileReader();
+    reader.onload = () => {
+      const { rows, missingHeader } = parseProductsCsv(String(reader.result ?? ""));
+      if (missingHeader) {
+        setImportErr(true);
+        setImportRows(null);
+      } else {
+        setImportRows(rows);
+      }
+    };
+    reader.readAsText(file, "utf-8");
+  }
+
+  const existingNames = useMemo(
+    () => new Set(products.map((p) => p.name.trim().toLowerCase())),
+    [products]
+  );
+  const importNew = useMemo(
+    () => (importRows ?? []).filter((r) => !existingNames.has(r.name.trim().toLowerCase())),
+    [importRows, existingNames]
+  );
+
+  async function confirmImport() {
+    if (!importNew.length || !sellerId) {
+      setImportRows(null);
+      return;
+    }
+    setImporting(true);
+    const supplierByName = new Map(
+      suppliers.map((s) => [s.name.trim().toLowerCase(), s.id])
+    );
+    let order = products.reduce((m, p) => Math.max(m, p.sort_order), 0);
+    const payload = importNew.map((r) => ({
+      seller_id: sellerId,
+      supplier_id: r.supplier ? supplierByName.get(r.supplier.trim().toLowerCase()) ?? null : null,
+      name: r.name,
+      name_fr: r.name_fr,
+      category: r.category,
+      unit: r.unit,
+      vat_rate: r.vat_rate,
+      purchase_price: r.purchase_price,
+      sale_price: r.sale_price,
+      sort_order: ++order,
+    }));
+    for (let i = 0; i < payload.length; i += 100) {
+      await supabase.from("products").insert(payload.slice(i, i + 100));
+    }
+    setImporting(false);
+    setImportMsg(`${fmtNum(payload.length, lang)} ${t("import_done")}`);
+    setImportRows(null);
+    reload();
+  }
+
   return (
     <div>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-bold">{t("products_title")}</h1>
-        <button
-          onClick={() => setAdding((a) => !a)}
-          className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-fg hover:opacity-90"
-        >
-          + {t("add_product")}
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <input
+            ref={fileRef}
+            type="file"
+            accept=".csv,text/csv"
+            className="hidden"
+            onChange={onImportFile}
+          />
+          <button
+            onClick={downloadTemplate}
+            className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-semibold hover:opacity-90"
+          >
+            {t("download_template")}
+          </button>
+          <button
+            onClick={() => fileRef.current?.click()}
+            className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-semibold hover:opacity-90"
+          >
+            {t("import_csv")}
+          </button>
+          <button
+            onClick={() => setAdding((a) => !a)}
+            className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-fg hover:opacity-90"
+          >
+            + {t("add_product")}
+          </button>
+        </div>
       </div>
+
+      {importMsg && (
+        <p className="mb-4 rounded-lg bg-primary/10 px-4 py-2 text-sm text-primary">{importMsg}</p>
+      )}
+
+      {importErr && (
+        <p className="mb-4 rounded-lg bg-danger/10 px-4 py-2 text-sm text-danger">
+          {t("import_bad_header")}
+        </p>
+      )}
+
+      {importRows && (
+        <div className="card mb-4 p-4">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <h2 className="font-semibold">{t("import_preview")}</h2>
+            <button onClick={() => setImportRows(null)} className="text-sm text-muted hover:underline">
+              {t("cancel")}
+            </button>
+          </div>
+          <p className="mb-3 text-xs text-muted">{t("import_hint")}</p>
+          {importRows.length === 0 ? (
+            <p className="text-sm text-danger">{t("import_empty")}</p>
+          ) : (
+            <>
+              <div className="mb-3 text-sm text-muted">
+                {fmtNum(importNew.length, lang)} {t("import_new_count")}
+                {importRows.length - importNew.length > 0 &&
+                  ` · ${fmtNum(importRows.length - importNew.length, lang)} ${t("import_dup_skipped")}`}
+              </div>
+              <div className="max-h-72 overflow-auto rounded border border-border">
+                <table className="w-full min-w-[720px] text-sm">
+                  <thead className="sticky top-0 bg-surface text-muted">
+                    <tr className="border-b border-border">
+                      <th className="px-3 py-1.5 text-start font-medium">{t("product")}</th>
+                      <th className="px-3 py-1.5 text-start font-medium">{t("designation_fr")}</th>
+                      <th className="px-3 py-1.5 text-start font-medium">{t("category")}</th>
+                      <th className="px-3 py-1.5 text-start font-medium">{t("unit")}</th>
+                      <th className="px-3 py-1.5 text-start font-medium">{t("supplier")}</th>
+                      <th className="px-3 py-1.5 text-end font-medium">{t("purchase_price")}</th>
+                      <th className="px-3 py-1.5 text-end font-medium">{t("sale_price")}</th>
+                      <th className="px-3 py-1.5 text-end font-medium">{t("vat")}</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {importRows.map((r, i) => {
+                      const dup = existingNames.has(r.name.trim().toLowerCase());
+                      return (
+                        <tr key={i} className={dup ? "text-muted line-through" : ""}>
+                          <td className="px-3 py-1.5">{r.name}</td>
+                          <td className="px-3 py-1.5">{r.name_fr ?? "—"}</td>
+                          <td className="px-3 py-1.5">{r.category ?? "—"}</td>
+                          <td className="px-3 py-1.5">{r.unit ?? "—"}</td>
+                          <td className="px-3 py-1.5">{r.supplier ?? "—"}</td>
+                          <td className="px-3 py-1.5 text-end">{fmtNum(r.purchase_price, lang)}</td>
+                          <td className="px-3 py-1.5 text-end">{fmtNum(r.sale_price, lang)}</td>
+                          <td className="px-3 py-1.5 text-end">{fmtNum(r.vat_rate, lang)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              <button
+                onClick={confirmImport}
+                disabled={importing || importNew.length === 0}
+                className="mt-3 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-fg disabled:opacity-50"
+              >
+                {importing ? t("importing") : `${t("import_confirm")} (${fmtNum(importNew.length, lang)})`}
+              </button>
+            </>
+          )}
+        </div>
+      )}
 
       <div className="mb-4 flex flex-wrap items-center gap-2">
         {sellers.map((s) => (
