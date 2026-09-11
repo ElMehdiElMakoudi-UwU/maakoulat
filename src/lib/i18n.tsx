@@ -30,6 +30,25 @@ export const DICT: Dict = {
   nav_group_finance: { fr: "Finances", ar: "المالية" },
   nav_group_docs: { fr: "Documents", ar: "الوثائق" },
   nav_group_directory: { fr: "Répertoire", ar: "الدليل" },
+  nav_group_settings: { fr: "Paramètres", ar: "الإعدادات" },
+  nav_settings: { fr: "Paramètres", ar: "الإعدادات" },
+
+  // Paramètres / Sauvegarde
+  settings_title: { fr: "Paramètres", ar: "الإعدادات" },
+  settings_hint: { fr: "Réglages généraux et sauvegarde des données.", ar: "الإعدادات العامة ونسخ البيانات احتياطيًا." },
+  backup_title: { fr: "Sauvegarde des données", ar: "نسخ البيانات احتياطيًا" },
+  backup_hint: {
+    fr: "Téléchargez une archive .zip contenant toutes les données de l'application (produits, ventes, fournisseurs, clients, factures, etc.) au format CSV.",
+    ar: "حمّل أرشيفًا بصيغة .zip يحتوي على جميع بيانات التطبيق (المنتجات، المبيعات، الموردون، الزبناء، الفواتير...) بصيغة CSV.",
+  },
+  backup_export_btn: { fr: "Exporter toutes les données", ar: "تصدير جميع البيانات" },
+  backup_exporting: { fr: "Export en cours...", ar: "جاري التصدير..." },
+  backup_done: { fr: "Sauvegarde téléchargée ✓", ar: "تم تحميل النسخة الاحتياطية ✓" },
+  backup_error: { fr: "Erreur lors de l'export. Réessayez.", ar: "خطأ أثناء التصدير. حاول مجددًا." },
+  backup_tables_hint: {
+    fr: "Chaque table de la base de données est exportée dans un fichier CSV séparé, à l'intérieur du zip.",
+    ar: "يتم تصدير كل جدول من قاعدة البيانات في ملف CSV منفصل داخل الأرشيف.",
+  },
 
   // Auth
   login_title: { fr: "Connexion", ar: "تسجيل الدخول" },
@@ -46,7 +65,7 @@ export const DICT: Dict = {
   category: { fr: "Catégorie", ar: "الفئة" },
   quantity: { fr: "Quantité", ar: "الكمية" },
   purchase_price: { fr: "Prix d'achat", ar: "ثمن الشراء" },
-  sale_price: { fr: "Prix de vente", ar: "ثمن البيع" },
+  sale_price: { fr: "Prix de vente HT", ar: "ثمن البيع بدون ض." },
   unit: { fr: "Unité", ar: "الوحدة" },
   revenue: { fr: "Chiffre d'affaires", ar: "رقم المعاملات" },
   ca: { fr: "CA", ar: "المداخيل" },

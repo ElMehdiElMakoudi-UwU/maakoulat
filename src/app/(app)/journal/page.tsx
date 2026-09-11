@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/lib/i18n";
-import { currentMonth, fmtMoney, fmtNum, monthLabel, monthRange } from "@/lib/format";
+import { currentMonth, fmtMoney, fmtNum, monthLabel, monthRange, ttc } from "@/lib/format";
 import type { Seller } from "@/lib/types";
 
 interface Row {
@@ -13,6 +13,7 @@ interface Row {
   quantity: number;
   purchase_price: number;
   sale_price: number;
+  products: { vat_rate: number } | { vat_rate: number }[] | null;
 }
 
 export default function JournalPage() {
@@ -31,7 +32,7 @@ export default function JournalPage() {
         supabase.from("sellers").select("*").order("sort_order"),
         supabase
           .from("sales")
-          .select("sale_date,seller_id,quantity,purchase_price,sale_price")
+          .select("sale_date,seller_id,quantity,purchase_price,sale_price,products(vat_rate)")
           .gte("sale_date", start)
           .lt("sale_date", end),
       ]);
@@ -47,7 +48,8 @@ export default function JournalPage() {
     for (const r of rows) {
       const key = `${r.sale_date}__${r.seller_id}`;
       const cur = map.get(key) ?? { date: r.sale_date, seller_id: r.seller_id, ca: 0, profit: 0, items: 0, lines: 0 };
-      cur.ca += r.quantity * r.sale_price;
+      const vat = (Array.isArray(r.products) ? r.products[0] : r.products)?.vat_rate ?? 0;
+      cur.ca += r.quantity * ttc(r.sale_price, vat);
       cur.profit += r.quantity * (r.sale_price - r.purchase_price);
       cur.items += r.quantity;
       cur.lines += 1;

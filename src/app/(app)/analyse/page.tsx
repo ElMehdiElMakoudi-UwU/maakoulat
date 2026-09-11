@@ -15,7 +15,7 @@ import {
 } from "recharts";
 import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/lib/i18n";
-import { currentMonth, fmtMoney, fmtNum, fmtPct, monthLabel, monthRange } from "@/lib/format";
+import { currentMonth, fmtMoney, fmtNum, fmtPct, monthLabel, monthRange, ttc } from "@/lib/format";
 import { SERIES, SELLER_HUES, STATUS, INK } from "@/lib/chartColors";
 import type { Product, Seller } from "@/lib/types";
 
@@ -82,14 +82,14 @@ export default function AnalysePage() {
     for (const s of inMonth) {
       const day = Number(s.sale_date.slice(8, 10));
       const cur = map.get(day) ?? { ca: 0, profit: 0 };
-      cur.ca += s.quantity * s.sale_price;
+      cur.ca += s.quantity * ttc(s.sale_price, products[s.product_id]?.vat_rate ?? 0);
       cur.profit += s.quantity * (s.sale_price - s.purchase_price);
       map.set(day, cur);
     }
     return Array.from(map.entries())
       .sort((a, b) => a[0] - b[0])
       .map(([day, v]) => ({ day: String(day), ...v }));
-  }, [inMonth]);
+  }, [inMonth, products]);
 
   // B) Comparaison mensuelle (CA + bénéfice) + par vendeur (CA)
   const monthly = useMemo(() => {
@@ -100,7 +100,7 @@ export default function AnalysePage() {
         profit = 0;
       const perSeller = new Map<string, number>();
       for (const s of rows) {
-        const c = s.quantity * s.sale_price;
+        const c = s.quantity * ttc(s.sale_price, products[s.product_id]?.vat_rate ?? 0);
         ca += c;
         profit += s.quantity * (s.sale_price - s.purchase_price);
         perSeller.set(s.seller_id, (perSeller.get(s.seller_id) ?? 0) + c);
@@ -110,7 +110,7 @@ export default function AnalysePage() {
       for (const sel of sellers) row[sel.name] = Math.round(perSeller.get(sel.id) ?? 0);
       return row;
     });
-  }, [months, sales, sellers, lang]);
+  }, [months, sales, sellers, lang, products]);
 
   // C) Alertes marges — produits vendus ce mois avec marge < seuil
   const marginAlerts = useMemo(() => {
@@ -127,12 +127,12 @@ export default function AnalysePage() {
     const agg = new Map<string, { ca: number; qty: number }>();
     for (const s of inMonth) {
       const cur = agg.get(s.product_id) ?? { ca: 0, qty: 0 };
-      cur.ca += s.quantity * s.sale_price;
+      cur.ca += s.quantity * ttc(s.sale_price, products[s.product_id]?.vat_rate ?? 0);
       cur.qty += s.quantity;
       agg.set(s.product_id, cur);
     }
     const best = Array.from(agg.entries())
-      .map(([id, v]) => ({ name: products[id]?.name ?? "—", seller: products[id]?.seller_id, ...v }))
+      .map(([id, v]) => ({ name: products[id]?.name ?? "—", ...v }))
       .sort((a, b) => b.ca - a.ca)
       .slice(0, 8);
     const soldIds = new Set(inMonth.map((s) => s.product_id));
@@ -141,8 +141,6 @@ export default function AnalysePage() {
       .slice(0, 30);
     return { best, dormant };
   }, [inMonth, products]);
-
-  const sellerName = (id?: string) => sellers.find((s) => s.id === id)?.name ?? "";
 
   return (
     <div dir="ltr">
@@ -240,7 +238,6 @@ export default function AnalysePage() {
                 <thead>
                   <tr className="text-muted">
                     <th className="px-4 py-2 text-start font-medium">{t("product")}</th>
-                    <th className="px-4 py-2 text-start font-medium">{t("seller")}</th>
                     <th className="px-4 py-2 text-end font-medium">{t("purchase_price")}</th>
                     <th className="px-4 py-2 text-end font-medium">{t("sale_price")}</th>
                     <th className="px-4 py-2 text-end font-medium">{t("margin")}</th>
@@ -250,7 +247,6 @@ export default function AnalysePage() {
                   {marginAlerts.map(({ p, margin }) => (
                     <tr key={p.id}>
                       <td className="px-4 py-2.5">{p.name}</td>
-                      <td className="px-4 py-2.5 text-muted">{sellerName(p.seller_id)}</td>
                       <td className="px-4 py-2.5 text-end">{fmtNum(p.purchase_price, lang)}</td>
                       <td className="px-4 py-2.5 text-end">{fmtNum(p.sale_price, lang)}</td>
                       <td className="px-4 py-2.5 text-end font-semibold"
@@ -291,7 +287,6 @@ export default function AnalysePage() {
                     {dormant.map((p) => (
                       <tr key={p.id}>
                         <td className="px-4 py-2.5">{p.name}</td>
-                        <td className="px-4 py-2.5 text-end text-muted">{sellerName(p.seller_id)}</td>
                       </tr>
                     ))}
                     {dormant.length === 0 && <tr><td className="p-6 text-center text-muted">{t("no_data")}</td></tr>}

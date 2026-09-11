@@ -4,7 +4,7 @@ import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/lib/i18n";
-import { fmtMoney, fmtNum, today } from "@/lib/format";
+import { fmtMoney, fmtNum, today, ttc } from "@/lib/format";
 import type { Product, Seller } from "@/lib/types";
 
 export default function VentesPageWrapper() {
@@ -53,7 +53,7 @@ function VentesPage() {
     setMsg("");
     (async () => {
       const [{ data: prods }, { data: sales }] = await Promise.all([
-        supabase.from("products").select("*").eq("seller_id", sellerId).eq("active", true).order("sort_order"),
+        supabase.from("products").select("*").eq("active", true).order("sort_order"),
         supabase.from("sales").select("product_id, quantity").eq("seller_id", sellerId).eq("sale_date", date),
       ]);
       setProducts((prods as Product[]) ?? []);
@@ -90,7 +90,7 @@ function VentesPage() {
     for (const p of products) {
       const q = parseFloat(qty[p.id] || "0") || 0;
       if (q > 0) {
-        ca += q * p.sale_price;
+        ca += q * ttc(p.sale_price, p.vat_rate);
         profit += q * (p.sale_price - p.purchase_price);
         items += q;
       }
@@ -143,7 +143,7 @@ function VentesPage() {
         quantity: parseFloat(qty[p.id]), purchase_price: p.purchase_price, sale_price: p.sale_price,
       }));
     const zeroIds = products.filter((p) => !((parseFloat(qty[p.id] || "0") || 0) > 0)).map((p) => p.id);
-    if (toUpsert.length) await supabase.from("sales").upsert(toUpsert, { onConflict: "product_id,sale_date" });
+    if (toUpsert.length) await supabase.from("sales").upsert(toUpsert, { onConflict: "product_id,seller_id,sale_date" });
     if (zeroIds.length) await supabase.from("sales").delete().eq("sale_date", date).in("product_id", zeroIds);
     setSaving(false);
     setSavedAt(Date.now());
@@ -235,8 +235,8 @@ function VentesPage() {
                       <div className="min-w-0 flex-1">
                         <div className="truncate font-medium">{p.name}</div>
                         <div className="text-xs text-muted">
-                          {fmtNum(p.sale_price, lang)} {t("currency")}
-                          {q > 0 && ` · ${fmtMoney(q * p.sale_price, lang)}`}
+                          {fmtNum(ttc(p.sale_price, p.vat_rate), lang)} {t("currency")} TTC
+                          {q > 0 && ` · ${fmtMoney(q * ttc(p.sale_price, p.vat_rate), lang)}`}
                         </div>
                       </div>
                       <div className="flex items-center gap-1.5">

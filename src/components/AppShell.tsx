@@ -42,6 +42,10 @@ const NAV_GROUPS = [
       { href: "/clients", key: "nav_clients", icon: "👥" },
     ],
   },
+  {
+    key: "nav_group_settings",
+    items: [{ href: "/parametres", key: "nav_settings", icon: "⚙️" }],
+  },
 ];
 
 export default function AppShell({ children }: { children: React.ReactNode }) {

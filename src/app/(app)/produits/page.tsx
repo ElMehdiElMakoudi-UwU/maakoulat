@@ -5,14 +5,12 @@ import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/lib/i18n";
 import { fmtNum, fmtPct } from "@/lib/format";
 import { parseProductsCsv, buildTemplateCsv, type ParsedProductRow } from "@/lib/productImport";
-import type { Product, Seller, Supplier } from "@/lib/types";
+import type { Product, Supplier } from "@/lib/types";
 
 export default function ProduitsPage() {
   const { t, lang } = useI18n();
   const supabase = useMemo(() => createClient(), []);
-  const [sellers, setSellers] = useState<Seller[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
-  const [sellerId, setSellerId] = useState("");
   const [products, setProducts] = useState<Product[]>([]);
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("all");
@@ -27,32 +25,21 @@ export default function ProduitsPage() {
 
   useEffect(() => {
     (async () => {
-      const [sellersRes, suppliersRes] = await Promise.all([
-        supabase.from("sellers").select("*").order("sort_order"),
-        supabase.from("suppliers").select("*").order("sort_order"),
-      ]);
-      const list = (sellersRes.data as Seller[]) ?? [];
-      setSellers(list);
-      setSuppliers((suppliersRes.data as Supplier[]) ?? []);
-      if (list.length) setSellerId((s) => s || list[0].id);
+      const { data } = await supabase.from("suppliers").select("*").order("sort_order");
+      setSuppliers((data as Supplier[]) ?? []);
     })();
   }, [supabase]);
 
   async function reload() {
-    if (!sellerId) return;
     setLoading(true);
-    const { data } = await supabase
-      .from("products")
-      .select("*")
-      .eq("seller_id", sellerId)
-      .order("sort_order");
+    const { data } = await supabase.from("products").select("*").order("sort_order");
     setProducts((data as Product[]) ?? []);
     setLoading(false);
   }
   useEffect(() => {
     reload();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sellerId]);
+  }, []);
 
   const categories = useMemo(() => {
     const set = new Set<string>();
@@ -90,10 +77,9 @@ export default function ProduitsPage() {
   }
 
   async function addProduct() {
-    if (!form.name || !sellerId) return;
+    if (!form.name) return;
     const maxOrder = products.reduce((m, p) => Math.max(m, p.sort_order), 0);
     await supabase.from("products").insert({
-      seller_id: sellerId,
       supplier_id: form.supplier || null,
       name: form.name,
       name_fr: form.designation || null,
@@ -154,7 +140,7 @@ export default function ProduitsPage() {
   );
 
   async function confirmImport() {
-    if (!importNew.length || !sellerId) {
+    if (!importNew.length) {
       setImportRows(null);
       return;
     }
@@ -164,7 +150,6 @@ export default function ProduitsPage() {
     );
     let order = products.reduce((m, p) => Math.max(m, p.sort_order), 0);
     const payload = importNew.map((r) => ({
-      seller_id: sellerId,
       supplier_id: r.supplier ? supplierByName.get(r.supplier.trim().toLowerCase()) ?? null : null,
       name: r.name,
       name_fr: r.name_fr,
@@ -291,17 +276,6 @@ export default function ProduitsPage() {
       )}
 
       <div className="mb-4 flex flex-wrap items-center gap-2">
-        {sellers.map((s) => (
-          <button
-            key={s.id}
-            onClick={() => setSellerId(s.id)}
-            className={`rounded-lg px-3 py-2 text-sm font-medium ${
-              sellerId === s.id ? "bg-primary text-primary-fg" : "border border-border bg-surface"
-            }`}
-          >
-            {s.name}
-          </button>
-        ))}
         <select
           value={category}
           onChange={(e) => setCategory(e.target.value)}

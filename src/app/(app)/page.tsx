@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/lib/i18n";
-import { currentMonth, fmtMoney, fmtNum, fmtPct, monthLabel, monthRange } from "@/lib/format";
+import { currentMonth, fmtMoney, fmtNum, fmtPct, monthLabel, monthRange, ttc } from "@/lib/format";
 import type { Product, Seller } from "@/lib/types";
 
 interface SaleRow {
@@ -36,7 +36,7 @@ export default function DashboardPage() {
     (async () => {
       const [sellersRes, prodRes, salesRes, payRes, chargeRes, setRes] = await Promise.all([
         supabase.from("sellers").select("*").order("sort_order"),
-        supabase.from("products").select("id,name,category,seller_id"),
+        supabase.from("products").select("id,name,category,vat_rate"),
         supabase
           .from("sales")
           .select("product_id,seller_id,quantity,purchase_price,sale_price")
@@ -72,7 +72,7 @@ export default function DashboardPage() {
     const map = new Map<string, { ca: number; profit: number }>();
     for (const s of sales) {
       const cur = map.get(s.seller_id) ?? { ca: 0, profit: 0 };
-      cur.ca += s.quantity * s.sale_price;
+      cur.ca += s.quantity * ttc(s.sale_price, products[s.product_id]?.vat_rate ?? 0);
       cur.profit += s.quantity * (s.sale_price - s.purchase_price);
       map.set(s.seller_id, cur);
     }
@@ -80,7 +80,7 @@ export default function DashboardPage() {
       seller: s,
       ...(map.get(s.id) ?? { ca: 0, profit: 0 }),
     }));
-  }, [sales, sellers]);
+  }, [sales, sellers, products]);
 
   const totals = useMemo(() => {
     const ca = perSeller.reduce((s, r) => s + r.ca, 0);
@@ -106,7 +106,7 @@ export default function DashboardPage() {
     const map = new Map<string, { ca: number; qty: number }>();
     for (const s of sales) {
       const cur = map.get(s.product_id) ?? { ca: 0, qty: 0 };
-      cur.ca += s.quantity * s.sale_price;
+      cur.ca += s.quantity * ttc(s.sale_price, products[s.product_id]?.vat_rate ?? 0);
       cur.qty += s.quantity;
       map.set(s.product_id, cur);
     }

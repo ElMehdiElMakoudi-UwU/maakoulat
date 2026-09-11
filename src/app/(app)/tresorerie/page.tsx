@@ -6,7 +6,7 @@ import {
 } from "recharts";
 import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/lib/i18n";
-import { currentMonth, fmtMoney, monthLabel, monthRange } from "@/lib/format";
+import { currentMonth, fmtMoney, monthLabel, monthRange, ttc } from "@/lib/format";
 import { SERIES, INK } from "@/lib/chartColors";
 
 export default function TresoreriePage() {
@@ -29,7 +29,7 @@ export default function TresoreriePage() {
     const { start, end } = monthRange(month);
     (async () => {
       const [salesRes, payRes, chargeRes, setRes] = await Promise.all([
-        supabase.from("sales").select("sale_date,quantity,sale_price").gte("sale_date", start).lt("sale_date", end),
+        supabase.from("sales").select("sale_date,quantity,sale_price,products(vat_rate)").gte("sale_date", start).lt("sale_date", end),
         supabase.from("supplier_payments").select("pay_date,amount").gte("pay_date", start).lt("pay_date", end),
         supabase.from("charges").select("amount,month,active").or(`month.is.null,month.eq.${month}`),
         supabase.from("monthly_settings").select("*").eq("month", month).maybeSingle(),
@@ -37,9 +37,10 @@ export default function TresoreriePage() {
 
       const sByDay: Record<number, number> = {};
       let ca = 0;
-      for (const s of (salesRes.data as { sale_date: string; quantity: number; sale_price: number }[]) ?? []) {
+      for (const s of (salesRes.data as { sale_date: string; quantity: number; sale_price: number; products: { vat_rate: number } | { vat_rate: number }[] | null }[]) ?? []) {
         const day = Number(s.sale_date.slice(8, 10));
-        const v = s.quantity * s.sale_price;
+        const vat = (Array.isArray(s.products) ? s.products[0] : s.products)?.vat_rate ?? 0;
+        const v = s.quantity * ttc(s.sale_price, vat);
         sByDay[day] = (sByDay[day] ?? 0) + v;
         ca += v;
       }

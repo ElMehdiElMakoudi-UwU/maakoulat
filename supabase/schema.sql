@@ -16,10 +16,9 @@ create table if not exists sellers (
   created_at  timestamptz not null default now()
 );
 
--- ---------- Produits (catalogue par vendeur) ----------
+-- ---------- Produits (catalogue partagé, commun à tous les vendeurs) ----------
 create table if not exists products (
   id             uuid primary key default gen_random_uuid(),
-  seller_id      uuid not null references sellers(id) on delete cascade,
   name           text not null,               -- nom (souvent en arabe)
   category       text,                         -- ex: Fromages
   unit           text,                         -- ex: 1kg (surtout Traiteur)
@@ -29,9 +28,8 @@ create table if not exists products (
   sort_order     int not null default 0,
   created_at     timestamptz not null default now()
 );
-create index if not exists idx_products_seller on products(seller_id);
 
--- ---------- Ventes (une ligne = un produit vendu à une date) ----------
+-- ---------- Ventes (une ligne = un produit vendu par un vendeur à une date) ----------
 create table if not exists sales (
   id           uuid primary key default gen_random_uuid(),
   product_id   uuid not null references products(id) on delete cascade,
@@ -42,7 +40,7 @@ create table if not exists sales (
   purchase_price numeric(12,2) not null default 0,
   sale_price     numeric(12,2) not null default 0,
   created_at   timestamptz not null default now(),
-  unique (product_id, sale_date)
+  unique (product_id, seller_id, sale_date)
 );
 create index if not exists idx_sales_seller_date on sales(seller_id, sale_date);
 create index if not exists idx_sales_date on sales(sale_date);

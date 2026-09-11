@@ -3,10 +3,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/lib/i18n";
-import { currentMonth, fmtMoney, fmtNum, fmtPct, monthLabel, monthRange } from "@/lib/format";
+import { currentMonth, fmtMoney, fmtNum, fmtPct, monthLabel, monthRange, ttc } from "@/lib/format";
 import type { Seller } from "@/lib/types";
 
-interface Prod { id: string; name: string; category: string | null; seller_id: string }
+interface Prod { id: string; name: string; category: string | null; vat_rate: number }
 interface Sale { product_id: string; seller_id: string; sale_date: string; quantity: number; purchase_price: number; sale_price: number }
 
 export default function RapportsPage() {
@@ -25,7 +25,7 @@ export default function RapportsPage() {
     (async () => {
       const [selRes, prodRes, salesRes] = await Promise.all([
         supabase.from("sellers").select("*").order("sort_order"),
-        supabase.from("products").select("id,name,category,seller_id"),
+        supabase.from("products").select("id,name,category,vat_rate"),
         supabase.from("sales").select("product_id,seller_id,sale_date,quantity,purchase_price,sale_price")
           .gte("sale_date", start).lt("sale_date", end),
       ]);
@@ -36,6 +36,7 @@ export default function RapportsPage() {
     })();
   }, [supabase, month]);
 
+  const vatOf = (id: string) => products.find((p) => p.id === id)?.vat_rate ?? 0;
   const prodName = (id: string) => products.find((p) => p.id === id)?.name ?? "—";
   const prodCat = (id: string) => products.find((p) => p.id === id)?.category ?? "—";
   const sellerName = (id: string) => sellers.find((s) => s.id === id)?.name ?? "—";
@@ -50,57 +51,58 @@ export default function RapportsPage() {
     const m = new Map<string, { ca: number; profit: number; qty: number }>();
     for (const s of sales) {
       const cur = m.get(s.seller_id) ?? { ca: 0, profit: 0, qty: 0 };
-      cur.ca += s.quantity * s.sale_price;
+      cur.ca += s.quantity * ttc(s.sale_price, vatOf(s.product_id));
       cur.profit += s.quantity * (s.sale_price - s.purchase_price);
       cur.qty += s.quantity;
       m.set(s.seller_id, cur);
     }
     return sellers.map((s) => ({ seller: s, ...(m.get(s.id) ?? { ca: 0, profit: 0, qty: 0 }) }));
-  }, [sales, sellers]);
+  }, [sales, sellers, products]);
 
   // Agrégat produits (scope courant)
   const perProduct = useMemo(() => {
-    const m = new Map<string, { ca: number; profit: number; qty: number }>();
+    const m = new Map<string, { ca: number; profit: number; qty: number; cost: number }>();
     for (const s of scoped) {
-      const cur = m.get(s.product_id) ?? { ca: 0, profit: 0, qty: 0 };
-      cur.ca += s.quantity * s.sale_price;
+      const cur = m.get(s.product_id) ?? { ca: 0, profit: 0, qty: 0, cost: 0 };
+      cur.ca += s.quantity * ttc(s.sale_price, vatOf(s.product_id));
       cur.profit += s.quantity * (s.sale_price - s.purchase_price);
+      cur.cost += s.quantity * s.purchase_price;
       cur.qty += s.quantity;
       m.set(s.product_id, cur);
     }
     return Array.from(m.entries()).map(([id, v]) => ({ id, ...v })).sort((a, b) => b.ca - a.ca);
-  }, [scoped]);
+  }, [scoped, products]);
 
   // Agrégat par jour (scope courant)
   const perDay = useMemo(() => {
     const m = new Map<string, { ca: number; profit: number; qty: number }>();
     for (const s of scoped) {
       const cur = m.get(s.sale_date) ?? { ca: 0, profit: 0, qty: 0 };
-      cur.ca += s.quantity * s.sale_price;
+      cur.ca += s.quantity * ttc(s.sale_price, vatOf(s.product_id));
       cur.profit += s.quantity * (s.sale_price - s.purchase_price);
       cur.qty += s.quantity;
       m.set(s.sale_date, cur);
     }
     return Array.from(m.entries()).map(([date, v]) => ({ date, ...v })).sort((a, b) => a.date.localeCompare(b.date));
-  }, [scoped]);
+  }, [scoped, products]);
 
   const tot = useMemo(() => {
     let ca = 0, profit = 0, qty = 0;
     for (const s of scoped) {
-      ca += s.quantity * s.sale_price;
+      ca += s.quantity * ttc(s.sale_price, vatOf(s.product_id));
       profit += s.quantity * (s.sale_price - s.purchase_price);
       qty += s.quantity;
     }
     return { ca, profit, qty, margin: ca ? profit / ca : 0 };
-  }, [scoped]);
+  }, [scoped, products]);
 
   function exportCsv() {
     const sep = ";";
     const head = ["Vendeur", "Catégorie", "Produit", "Quantité", "PU achat", "PU vente", "CA", "Bénéfice"];
     const lines = perProduct.map((p) => {
-      const sid = products.find((x) => x.id === p.id)?.seller_id ?? "";
+      const sid = sellerId !== "all" ? sellerId : scoped.find((s) => s.product_id === p.id)?.seller_id ?? "";
       const pu = p.qty ? (p.ca / p.qty) : 0;
-      const pa = p.qty ? ((p.ca - p.profit) / p.qty) : 0;
+      const pa = p.qty ? (p.cost / p.qty) : 0;
       return [sellerName(sid), prodCat(p.id), prodName(p.id), p.qty, pa.toFixed(2), pu.toFixed(2), p.ca.toFixed(2), p.profit.toFixed(2)]
         .map((c) => `"${String(c).replace(/"/g, '""')}"`).join(sep);
     });

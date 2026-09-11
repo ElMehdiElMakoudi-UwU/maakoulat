@@ -10,7 +10,6 @@ export interface Seller {
 
 export interface Product {
   id: string;
-  seller_id: string;
   supplier_id: string | null;
   name: string;
   name_fr: string | null;

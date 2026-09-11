@@ -25,6 +25,16 @@ export function fmtPct(n: number, lang: Lang = "fr"): string {
   }).format(v);
 }
 
+/**
+ * Prix de vente TTC à partir d'un prix HT (celui saisi sur la fiche produit)
+ * et d'un taux de TVA en pourcentage. Toute vente est valorisée en TTC.
+ */
+export function ttc(priceHT: number, vatRate: number): number {
+  const p = Number(priceHT) || 0;
+  const v = Number(vatRate) || 0;
+  return p * (1 + v / 100);
+}
+
 /** Mois courant au format YYYY-MM */
 export function currentMonth(): string {
   const d = new Date();
