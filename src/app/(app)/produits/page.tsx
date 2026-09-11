@@ -17,6 +17,7 @@ export default function ProduitsPage() {
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
   const [form, setForm] = useState({ name: "", designation: "", category: "", unit: "", pa: "", pv: "", pvTraiteur: "", vat: "", supplier: "" });
+  const [addErr, setAddErr] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
   const [importRows, setImportRows] = useState<ParsedProductRow[] | null>(null);
   const [importErr, setImportErr] = useState(false);
@@ -79,9 +80,13 @@ export default function ProduitsPage() {
   }
 
   async function addProduct() {
-    if (!form.name) return;
+    if (!form.name) {
+      setAddErr(t("name") + " ?");
+      return;
+    }
+    setAddErr("");
     const maxOrder = products.reduce((m, p) => Math.max(m, p.sort_order), 0);
-    await supabase.from("products").insert({
+    const { error } = await supabase.from("products").insert({
       supplier_id: form.supplier || null,
       name: form.name,
       name_fr: form.designation || null,
@@ -93,6 +98,10 @@ export default function ProduitsPage() {
       vat_rate: parseFloat(form.vat) || 0,
       sort_order: maxOrder + 1,
     });
+    if (error) {
+      setAddErr(error.message);
+      return;
+    }
     setForm({ name: "", designation: "", category: "", unit: "", pa: "", pv: "", pvTraiteur: "", vat: "", supplier: "" });
     setAdding(false);
     reload();
@@ -321,11 +330,14 @@ export default function ProduitsPage() {
             <option value="">{t("no_supplier")}</option>
             {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
+          {addErr && (
+            <p className="rounded-lg bg-danger/10 px-3 py-2 text-sm text-danger sm:col-span-4">{addErr}</p>
+          )}
           <div className="flex gap-2 sm:col-span-4">
             <button onClick={addProduct} className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-fg">
               {t("save")}
             </button>
-            <button onClick={() => setAdding(false)} className="rounded-lg border border-border px-4 py-2 text-sm">
+            <button onClick={() => { setAdding(false); setAddErr(""); }} className="rounded-lg border border-border px-4 py-2 text-sm">
               {t("cancel")}
             </button>
           </div>
