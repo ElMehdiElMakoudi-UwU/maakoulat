@@ -11,6 +11,7 @@ export const TEMPLATE_COLUMNS = [
   "unit",
   "purchase_price",
   "sale_price",
+  "traiteur_price",
   "vat_rate",
   "supplier",
 ] as const;
@@ -24,6 +25,7 @@ export interface ParsedProductRow {
   unit: string | null;
   purchase_price: number;
   sale_price: number;
+  traiteur_price: number | null;
   vat_rate: number;
   supplier: string | null;
 }
@@ -36,6 +38,7 @@ const HEADER_ALIASES: Record<TemplateColumn, string[]> = {
   unit: ["unit", "unite", "conditionnement"],
   purchase_price: ["purchaseprice", "prixdachat", "prixachat", "pa", "pattc", "achat", "pu"],
   sale_price: ["saleprice", "prixdevente", "prixvente", "pv", "pvttc", "vente"],
+  traiteur_price: ["traiteurprice", "prixtraiteur", "pvtraiteur", "traiteur"],
   vat_rate: ["vatrate", "tva", "vat", "taxe"],
   supplier: ["supplier", "fournisseur", "frs"],
 };
@@ -105,6 +108,7 @@ export function parseProductsCsv(text: string): ParseResult {
     unit: colOf("unit"),
     purchase_price: colOf("purchase_price"),
     sale_price: colOf("sale_price"),
+    traiteur_price: colOf("traiteur_price"),
     vat_rate: colOf("vat_rate"),
     supplier: colOf("supplier"),
   };
@@ -123,6 +127,7 @@ export function parseProductsCsv(text: string): ParseResult {
       unit: idx.unit >= 0 && clean(cells[idx.unit]) ? clean(cells[idx.unit]) : null,
       purchase_price: idx.purchase_price >= 0 ? num(cells[idx.purchase_price]) : 0,
       sale_price: idx.sale_price >= 0 ? num(cells[idx.sale_price]) : 0,
+      traiteur_price: idx.traiteur_price >= 0 && clean(cells[idx.traiteur_price]) ? num(cells[idx.traiteur_price]) : null,
       vat_rate: idx.vat_rate >= 0 ? num(cells[idx.vat_rate]) : 0,
       supplier: idx.supplier >= 0 && clean(cells[idx.supplier]) ? clean(cells[idx.supplier]) : null,
     });
@@ -134,8 +139,8 @@ export function parseProductsCsv(text: string): ParseResult {
 export function buildTemplateCsv(): string {
   const header = TEMPLATE_COLUMNS.join(",");
   const examples = [
-    ["موتزاريلا 1 كيلو", "Mozzarella 1 kg", "Fromages", "1 kg", "39.17", "43.17", "20", "Nom du fournisseur"],
-    ["كتشوب 2 كيلو", "Ketchup 2 kg", "Sauces", "2 kg", "14.17", "17.17", "20", ""],
+    ["موتزاريلا 1 كيلو", "Mozzarella 1 kg", "Fromages", "1 kg", "39.17", "43.17", "41.17", "20", "Nom du fournisseur"],
+    ["كتشوب 2 كيلو", "Ketchup 2 kg", "Sauces", "2 kg", "14.17", "17.17", "", "20", ""],
   ];
   const rows = examples.map((r) =>
     r.map((c) => (/[",;\n]/.test(c) ? `"${c.replace(/"/g, '""')}"` : c)).join(",")

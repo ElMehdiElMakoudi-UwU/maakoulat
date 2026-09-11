@@ -17,6 +17,7 @@ export interface Product {
   unit: string | null;
   purchase_price: number;
   sale_price: number;
+  traiteur_price: number | null;
   vat_rate: number;
   active: boolean;
   sort_order: number;

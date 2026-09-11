@@ -289,8 +289,8 @@ export default function BonsCommandePage() {
   const productLabels = useMemo(() => {
     const set = new Set<string>();
     for (const p of supplierProducts) {
-      if (p.name) set.add(p.name);
-      if (p.name_fr) set.add(p.name_fr);
+      const label = p.name_fr || p.name;
+      if (label) set.add(label);
     }
     return Array.from(set);
   }, [supplierProducts]);

@@ -16,7 +16,7 @@ export default function ProduitsPage() {
   const [category, setCategory] = useState("all");
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
-  const [form, setForm] = useState({ name: "", designation: "", category: "", unit: "", pa: "", pv: "", vat: "", supplier: "" });
+  const [form, setForm] = useState({ name: "", designation: "", category: "", unit: "", pa: "", pv: "", pvTraiteur: "", vat: "", supplier: "" });
   const fileRef = useRef<HTMLInputElement>(null);
   const [importRows, setImportRows] = useState<ParsedProductRow[] | null>(null);
   const [importErr, setImportErr] = useState(false);
@@ -63,11 +63,13 @@ export default function ProduitsPage() {
 
   async function updateField(
     p: Product,
-    field: "purchase_price" | "sale_price" | "vat_rate" | "name" | "name_fr" | "category" | "supplier_id",
+    field: "purchase_price" | "sale_price" | "traiteur_price" | "vat_rate" | "name" | "name_fr" | "category" | "supplier_id",
     value: string
   ) {
     const numeric = field === "purchase_price" || field === "sale_price" || field === "vat_rate";
-    const patch: Partial<Product> = numeric
+    const patch: Partial<Product> = field === "traiteur_price"
+      ? { traiteur_price: value.trim() === "" ? null : parseFloat(value) || 0 }
+      : numeric
       ? { [field]: parseFloat(value) || 0 }
       : field === "supplier_id"
       ? { supplier_id: value || null }
@@ -87,10 +89,11 @@ export default function ProduitsPage() {
       unit: form.unit || null,
       purchase_price: parseFloat(form.pa) || 0,
       sale_price: parseFloat(form.pv) || 0,
+      traiteur_price: form.pvTraiteur.trim() === "" ? null : parseFloat(form.pvTraiteur) || 0,
       vat_rate: parseFloat(form.vat) || 0,
       sort_order: maxOrder + 1,
     });
-    setForm({ name: "", designation: "", category: "", unit: "", pa: "", pv: "", vat: "", supplier: "" });
+    setForm({ name: "", designation: "", category: "", unit: "", pa: "", pv: "", pvTraiteur: "", vat: "", supplier: "" });
     setAdding(false);
     reload();
   }
@@ -158,6 +161,7 @@ export default function ProduitsPage() {
       vat_rate: r.vat_rate,
       purchase_price: r.purchase_price,
       sale_price: r.sale_price,
+      traiteur_price: r.traiteur_price,
       sort_order: ++order,
     }));
     for (let i = 0; i < payload.length; i += 100) {
@@ -308,6 +312,8 @@ export default function ProduitsPage() {
             onChange={(e) => setForm({ ...form, pa: e.target.value })} />
           <input className="input" type="number" placeholder={t("sale_price")} value={form.pv}
             onChange={(e) => setForm({ ...form, pv: e.target.value })} />
+          <input className="input" type="number" placeholder={t("traiteur_price")} value={form.pvTraiteur}
+            onChange={(e) => setForm({ ...form, pvTraiteur: e.target.value })} />
           <input className="input" type="number" placeholder={t("vat")} value={form.vat}
             onChange={(e) => setForm({ ...form, vat: e.target.value })} />
           <select className="input sm:col-span-2" value={form.supplier}
@@ -339,6 +345,7 @@ export default function ProduitsPage() {
                 <th className="px-3 py-2 text-start font-medium">{t("supplier")}</th>
                 <th className="px-3 py-2 text-end font-medium">{t("purchase_price")}</th>
                 <th className="px-3 py-2 text-end font-medium">{t("sale_price")}</th>
+                <th className="px-3 py-2 text-end font-medium">{t("traiteur_price")}</th>
                 <th className="px-3 py-2 text-end font-medium">{t("vat")}</th>
                 <th className="px-3 py-2 text-end font-medium">{t("margin")}</th>
                 <th className="px-3 py-2"></th>
@@ -378,6 +385,11 @@ export default function ProduitsPage() {
                         className="w-20 rounded border border-transparent bg-transparent px-1 py-1 text-end hover:border-border focus:border-primary focus:outline-none" />
                     </td>
                     <td className="px-3 py-2 text-end">
+                      <input type="number" defaultValue={p.traiteur_price ?? ""} placeholder={t("same_as_sale_price")}
+                        onBlur={(e) => updateField(p, "traiteur_price", e.target.value)}
+                        className="w-20 rounded border border-transparent bg-transparent px-1 py-1 text-end hover:border-border focus:border-primary focus:outline-none" />
+                    </td>
+                    <td className="px-3 py-2 text-end">
                       <input type="number" defaultValue={p.vat_rate} onBlur={(e) => updateField(p, "vat_rate", e.target.value)}
                         className="w-16 rounded border border-transparent bg-transparent px-1 py-1 text-end hover:border-border focus:border-primary focus:outline-none" />
                     </td>
@@ -389,7 +401,7 @@ export default function ProduitsPage() {
                 );
               })}
               {filtered.length === 0 && (
-                <tr><td colSpan={9} className="p-6 text-center text-muted">{t("no_data")}</td></tr>
+                <tr><td colSpan={10} className="p-6 text-center text-muted">{t("no_data")}</td></tr>
               )}
             </tbody>
           </table>

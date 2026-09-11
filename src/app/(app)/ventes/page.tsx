@@ -4,7 +4,7 @@ import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/lib/i18n";
-import { fmtMoney, fmtNum, today, ttc } from "@/lib/format";
+import { fmtMoney, fmtNum, sellerSalePrice, today, ttc } from "@/lib/format";
 import type { Product, Seller } from "@/lib/types";
 
 export default function VentesPageWrapper() {
@@ -66,6 +66,8 @@ function VentesPage() {
     })();
   }, [supabase, sellerId, date]);
 
+  const seller = useMemo(() => sellers.find((s) => s.id === sellerId), [sellers, sellerId]);
+
   const filtered = useMemo(() => {
     const s = search.trim().toLowerCase();
     return products.filter((p) => {
@@ -87,16 +89,18 @@ function VentesPage() {
 
   const totals = useMemo(() => {
     let ca = 0, profit = 0, items = 0;
+    const kind = seller?.kind ?? "retail";
     for (const p of products) {
       const q = parseFloat(qty[p.id] || "0") || 0;
       if (q > 0) {
-        ca += q * ttc(p.sale_price, p.vat_rate);
-        profit += q * (p.sale_price - p.purchase_price);
+        const price = sellerSalePrice(p, kind);
+        ca += q * ttc(price, p.vat_rate);
+        profit += q * (price - p.purchase_price);
         items += q;
       }
     }
     return { ca, profit, items };
-  }, [products, qty]);
+  }, [products, qty, seller]);
 
   const soldCount = useMemo(
     () => products.filter((p) => (parseFloat(qty[p.id] || "0") || 0) > 0).length,
@@ -136,11 +140,12 @@ function VentesPage() {
   async function save() {
     if (!sellerId) return;
     setSaving(true);
+    const kind = seller?.kind ?? "retail";
     const toUpsert = products
       .filter((p) => (parseFloat(qty[p.id] || "0") || 0) > 0)
       .map((p) => ({
         product_id: p.id, seller_id: sellerId, sale_date: date,
-        quantity: parseFloat(qty[p.id]), purchase_price: p.purchase_price, sale_price: p.sale_price,
+        quantity: parseFloat(qty[p.id]), purchase_price: p.purchase_price, sale_price: sellerSalePrice(p, kind),
       }));
     const zeroIds = products.filter((p) => !((parseFloat(qty[p.id] || "0") || 0) > 0)).map((p) => p.id);
     if (toUpsert.length) await supabase.from("sales").upsert(toUpsert, { onConflict: "product_id,seller_id,sale_date" });
@@ -230,13 +235,14 @@ function VentesPage() {
               <div className="divide-y divide-border">
                 {items.map((p) => {
                   const q = parseFloat(qty[p.id] || "0") || 0;
+                  const price = sellerSalePrice(p, seller?.kind ?? "retail");
                   return (
                     <div key={p.id} className={`flex items-center gap-2 px-3 py-2.5 ${q > 0 ? "bg-primary/5" : ""}`}>
                       <div className="min-w-0 flex-1">
                         <div className="truncate font-medium">{p.name}</div>
                         <div className="text-xs text-muted">
-                          {fmtNum(ttc(p.sale_price, p.vat_rate), lang)} {t("currency")} TTC
-                          {q > 0 && ` · ${fmtMoney(q * ttc(p.sale_price, p.vat_rate), lang)}`}
+                          {fmtNum(ttc(price, p.vat_rate), lang)} {t("currency")} TTC
+                          {q > 0 && ` · ${fmtMoney(q * ttc(price, p.vat_rate), lang)}`}
                         </div>
                       </div>
                       <div className="flex items-center gap-1.5">

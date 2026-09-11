@@ -35,6 +35,17 @@ export function ttc(priceHT: number, vatRate: number): number {
   return p * (1 + v / 100);
 }
 
+// Prix de vente HT applicable pour un vendeur donné : les vendeurs "traiteur"
+// ont leur propre liste de prix (products.traiteur_price) ; si elle n'est pas
+// renseignée pour un produit, le prix retail (sale_price) sert de repli.
+export function sellerSalePrice(
+  product: { sale_price: number; traiteur_price: number | null },
+  sellerKind: "retail" | "traiteur"
+): number {
+  if (sellerKind === "traiteur" && product.traiteur_price != null) return product.traiteur_price;
+  return product.sale_price;
+}
+
 /** Mois courant au format YYYY-MM */
 export function currentMonth(): string {
   const d = new Date();

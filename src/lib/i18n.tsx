@@ -66,6 +66,8 @@ export const DICT: Dict = {
   quantity: { fr: "Quantité", ar: "الكمية" },
   purchase_price: { fr: "Prix d'achat", ar: "ثمن الشراء" },
   sale_price: { fr: "Prix de vente HT", ar: "ثمن البيع بدون ض." },
+  traiteur_price: { fr: "Prix Traiteur HT", ar: "ثمن الطراتور بدون ض." },
+  same_as_sale_price: { fr: "= prix vente", ar: "= ثمن البيع" },
   unit: { fr: "Unité", ar: "الوحدة" },
   revenue: { fr: "Chiffre d'affaires", ar: "رقم المعاملات" },
   ca: { fr: "CA", ar: "المداخيل" },
@@ -116,8 +118,8 @@ export const DICT: Dict = {
   download_template: { fr: "Modèle CSV", ar: "نموذج CSV" },
   import_preview: { fr: "Aperçu de l'import", ar: "معاينة الاستيراد" },
   import_hint: {
-    fr: "Colonnes du fichier : name, name_fr, category, unit, purchase_price, sale_price, vat_rate, supplier. Seule « name » est obligatoire ; l'ordre est libre. Le fournisseur est rattaché s'il existe déjà (même nom). Les produits déjà présents (même nom) sont ignorés.",
-    ar: "أعمدة الملف: name، name_fr، category، unit، purchase_price، sale_price، vat_rate، supplier. « name » وحده إلزامي والترتيب حر. يُربط المورد إن كان موجودا (نفس الاسم). المنتجات الموجودة (نفس الاسم) تُتجاهل.",
+    fr: "Colonnes du fichier : name, name_fr, category, unit, purchase_price, sale_price, traiteur_price, vat_rate, supplier. Seule « name » est obligatoire ; l'ordre est libre. traiteur_price est optionnel (vide = même prix que sale_price). Le fournisseur est rattaché s'il existe déjà (même nom). Les produits déjà présents (même nom) sont ignorés.",
+    ar: "أعمدة الملف: name، name_fr، category، unit، purchase_price، sale_price، traiteur_price، vat_rate، supplier. « name » وحده إلزامي والترتيب حر. traiteur_price اختياري (فارغ = نفس ثمن sale_price). يُربط المورد إن كان موجودا (نفس الاسم). المنتجات الموجودة (نفس الاسم) تُتجاهل.",
   },
   import_bad_header: {
     fr: "En-tête introuvable. Le fichier doit avoir une ligne d'en-tête avec au moins une colonne « name ». Téléchargez le modèle.",
