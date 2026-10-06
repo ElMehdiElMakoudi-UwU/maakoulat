@@ -3,8 +3,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/lib/i18n";
-import { fmtMoney, fmtNum, today } from "@/lib/format";
+import { fmtDays, fmtMoney, fmtNum, today } from "@/lib/format";
 import type { Supplier, SupplierPayment, SupplierInvoice } from "@/lib/types";
+import { addDays, allocateInvoices, dueSummary, type OpenInvoice } from "@/lib/supplierDues";
 
 type MovementKind = "invoice" | "payment";
 interface Movement {
@@ -22,6 +23,7 @@ const emptyForm = {
   address: "",
   contact_name: "",
   notes: "",
+  payment_terms_days: "0",
   active: true,
 };
 type SupForm = typeof emptyForm;
@@ -38,6 +40,7 @@ export default function FournisseursPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [showInactive, setShowInactive] = useState(false);
+  const [dueFilter, setDueFilter] = useState<"overdue" | "7d" | "30d" | "all">("7d");
 
   // Formulaire ajout / édition d'un fournisseur
   const [editingId, setEditingId] = useState<string | null>(null); // null + formOpen => ajout
@@ -85,6 +88,27 @@ export default function FournisseursPage() {
     [totals]
   );
 
+  // Échéances : reste à payer par facture (paiements imputés en FIFO)
+  const todayStr = today();
+  const allocated = useMemo(
+    () => allocateInvoices(suppliers, invoices, payments, todayStr),
+    [suppliers, invoices, payments, todayStr]
+  );
+  const summary = useMemo(() => dueSummary(allocated), [allocated]);
+  const overdueBySupplier = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const r of allocated) if (r.status === "overdue") m.set(r.supplier_id, (m.get(r.supplier_id) ?? 0) + r.remaining);
+    return m;
+  }, [allocated]);
+  const schedule = useMemo(() => {
+    const maxDays = dueFilter === "7d" ? 7 : dueFilter === "30d" ? 30 : dueFilter === "overdue" ? -1 : Infinity;
+    return allocated
+      .filter((r) => r.status !== "paid" && r.days <= maxDays)
+      .sort((a, b) => (a.due_date < b.due_date ? -1 : a.due_date > b.due_date ? 1 : 0));
+  }, [allocated, dueFilter]);
+  const scheduleTotal = schedule.reduce((sum, r) => sum + r.remaining, 0);
+  const supplierName = (id: string) => suppliers.find((s) => s.id === id)?.name ?? "—";
+
   const visibleSuppliers = useMemo(() => {
     const q = search.trim().toLowerCase();
     return suppliers
@@ -116,6 +140,7 @@ export default function FournisseursPage() {
       address: s.address ?? "",
       contact_name: s.contact_name ?? "",
       notes: s.notes ?? "",
+      payment_terms_days: String(s.payment_terms_days ?? 0),
       active: s.active,
     });
     setEditingId(s.id);
@@ -130,6 +155,7 @@ export default function FournisseursPage() {
       address: form.address.trim() || null,
       contact_name: form.contact_name.trim() || null,
       notes: form.notes.trim() || null,
+      payment_terms_days: Math.max(0, parseInt(form.payment_terms_days, 10) || 0),
       active: form.active,
     };
     if (editingId) {
@@ -161,6 +187,7 @@ export default function FournisseursPage() {
         invoices={invoices.filter((i) => i.supplier_id === selected.id)}
         payments={payments.filter((p) => p.supplier_id === selected.id)}
         totals={totals.get(selected.id) ?? { ordered: 0, paid: 0, due: 0 }}
+        allocated={allocated.filter((r) => r.supplier_id === selected.id)}
         onBack={() => setSelectedId(null)}
         onEdit={() => openEdit(selected)}
         onChanged={loadAll}
@@ -185,7 +212,7 @@ export default function FournisseursPage() {
       </div>
 
       {/* KPI global */}
-      <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3">
+      <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         <div className="card p-3">
           <div className="text-xs text-muted">{t("supplier_count")}</div>
           <div className="text-xl font-bold">{fmtNum(suppliers.length, lang)}</div>
@@ -199,6 +226,75 @@ export default function FournisseursPage() {
         <div className="card p-3">
           <div className="text-xs text-muted">{t("with_debt")}</div>
           <div className="text-xl font-bold">{fmtNum(nbWithDebt, lang)}</div>
+        </div>
+        <button onClick={() => setDueFilter("overdue")} className="card p-3 text-start hover:border-danger">
+          <div className="text-xs text-muted">{t("overdue_total")} ({fmtNum(summary.overdueCount, lang)})</div>
+          <div className={`text-xl font-bold ${summary.overdue > 0 ? "text-danger" : ""}`}>{fmtMoney(summary.overdue, lang)}</div>
+        </button>
+        <button onClick={() => setDueFilter("7d")} className="card p-3 text-start hover:border-accent">
+          <div className="text-xs text-muted">{t("due_7_days")} ({fmtNum(summary.dueSoonCount, lang)})</div>
+          <div className={`text-xl font-bold ${summary.dueSoon > 0 ? "text-accent" : ""}`}>{fmtMoney(summary.dueSoon, lang)}</div>
+        </button>
+      </div>
+
+      {/* Échéancier */}
+      <div className="mb-6">
+        <div className="mb-2 flex flex-wrap items-end justify-between gap-2">
+          <div>
+            <h2 className="text-sm font-bold">{t("schedule_title")}</h2>
+            <p className="text-xs text-muted">{t("schedule_hint")}</p>
+          </div>
+          <div className="flex gap-1">
+            {(["overdue", "7d", "30d", "all"] as const).map((f) => (
+              <button
+                key={f}
+                onClick={() => setDueFilter(f)}
+                className={`rounded-lg px-3 py-1.5 text-xs font-medium ${
+                  dueFilter === f ? "bg-primary text-primary-fg" : "border border-border"
+                }`}
+              >
+                {t(f === "overdue" ? "filter_overdue" : f === "7d" ? "filter_7d" : f === "30d" ? "filter_30d" : "filter_all")}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="card overflow-x-auto">
+          <table className="w-full min-w-[600px] text-sm">
+            <thead>
+              <tr className="border-b border-border text-muted">
+                <th className="px-4 py-2 text-start font-medium">{t("due_date")}</th>
+                <th className="px-4 py-2 text-start font-medium">{t("supplier_name")}</th>
+                <th className="px-4 py-2 text-start font-medium">{t("invoice_date")}</th>
+                <th className="px-4 py-2 text-start font-medium">{t("note")}</th>
+                <th className="px-4 py-2 text-end font-medium">{t("remaining")}</th>
+                <th className="px-4 py-2 text-end font-medium">{t("status")}</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {schedule.map((r) => (
+                <tr key={r.invoice.id} className="cursor-pointer hover:bg-background" onClick={() => setSelectedId(r.supplier_id)}>
+                  <td className="px-4 py-2.5 font-medium">{r.due_date}</td>
+                  <td className="px-4 py-2.5">{supplierName(r.supplier_id)}</td>
+                  <td className="px-4 py-2.5 text-muted">{r.invoice.inv_date}</td>
+                  <td className="px-4 py-2.5 text-muted">{r.invoice.note}</td>
+                  <td className="px-4 py-2.5 text-end font-semibold">{fmtMoney(r.remaining, lang)}</td>
+                  <td className="px-4 py-2.5 text-end"><DueBadge row={r} t={t} lang={lang} /></td>
+                </tr>
+              ))}
+              {schedule.length === 0 && (
+                <tr><td colSpan={6} className="p-6 text-center text-muted">{t("no_due_invoices")}</td></tr>
+              )}
+            </tbody>
+            {schedule.length > 0 && (
+              <tfoot>
+                <tr className="border-t-2 border-border bg-background font-bold">
+                  <td className="px-4 py-2.5" colSpan={4}>{t("to_pay")}</td>
+                  <td className="px-4 py-2.5 text-end">{fmtMoney(scheduleTotal, lang)}</td>
+                  <td></td>
+                </tr>
+              </tfoot>
+            )}
+          </table>
         </div>
       </div>
 
@@ -229,6 +325,12 @@ export default function FournisseursPage() {
               onChange={(e) => setForm({ ...form, phone: e.target.value })} />
             <input className="input" placeholder={t("email")} value={form.email} dir="ltr"
               onChange={(e) => setForm({ ...form, email: e.target.value })} />
+            <label className="flex flex-col gap-1 text-xs text-muted">
+              {t("payment_terms")}
+              <input className="input" type="number" min={0} step={1} value={form.payment_terms_days}
+                onChange={(e) => setForm({ ...form, payment_terms_days: e.target.value })} />
+            </label>
+            <div className="hidden sm:block" />
             <input className="input sm:col-span-2" placeholder={t("address")} value={form.address}
               onChange={(e) => setForm({ ...form, address: e.target.value })} />
             <textarea className="input sm:col-span-2" rows={2} placeholder={t("note")} value={form.notes}
@@ -266,6 +368,11 @@ export default function FournisseursPage() {
                     <span className="rounded bg-background px-1.5 py-0.5 text-[10px] text-muted">{t("inactive")}</span>
                   )}
                 </div>
+                {(overdueBySupplier.get(s.id) ?? 0) > 0 && (
+                  <div className="mb-1 self-start rounded bg-danger/10 px-2 py-0.5 text-xs font-medium text-danger">
+                    {t("due_overdue")}: {fmtMoney(overdueBySupplier.get(s.id) ?? 0, lang)}
+                  </div>
+                )}
                 {(s.contact_name || s.phone) && (
                   <div className="mb-2 text-xs text-muted">
                     {s.contact_name}{s.contact_name && s.phone ? " · " : ""}<span dir="ltr">{s.phone}</span>
@@ -299,12 +406,13 @@ export default function FournisseursPage() {
 // Fiche fournisseur + relevé de compte
 // ============================================================
 function SupplierDetail({
-  supplier, invoices, payments, totals, onBack, onEdit, onChanged, supabase, t, lang,
+  supplier, invoices, payments, totals, allocated, onBack, onEdit, onChanged, supabase, t, lang,
 }: {
   supplier: Supplier;
   invoices: SupplierInvoice[];
   payments: SupplierPayment[];
   totals: { ordered: number; paid: number; due: number };
+  allocated: OpenInvoice[];
   onBack: () => void;
   onEdit: () => void;
   onChanged: () => void | Promise<void>;
@@ -312,9 +420,17 @@ function SupplierDetail({
   t: (k: string) => string;
   lang: "fr" | "ar";
 }) {
-  const [mForm, setMForm] = useState<{ kind: MovementKind; date: string; amount: string; note: string }>({
-    kind: "invoice", date: today(), amount: "", note: "",
+  const terms = supplier.payment_terms_days ?? 0;
+  const [mForm, setMForm] = useState<{ kind: MovementKind; date: string; due: string; amount: string; note: string }>({
+    kind: "invoice", date: today(), due: addDays(today(), terms), amount: "", note: "",
   });
+  const byInvoice = useMemo(() => new Map(allocated.map((r) => [r.invoice.id, r])), [allocated]);
+  const overdue = allocated.filter((r) => r.status === "overdue").reduce((s, r) => s + r.remaining, 0);
+
+  async function updateDueDate(invoiceId: string, due: string) {
+    await supabase.from("supplier_invoices").update({ due_date: due || null }).eq("id", invoiceId);
+    await onChanged();
+  }
 
   // Relevé : mouvements fusionnés, du plus ancien au plus récent, avec solde progressif
   const movements = useMemo<Movement[]>(() => {
@@ -339,7 +455,7 @@ function SupplierDetail({
     if (!amount) return;
     if (mForm.kind === "invoice") {
       await supabase.from("supplier_invoices").insert({
-        supplier_id: supplier.id, inv_date: mForm.date, amount, note: mForm.note || null,
+        supplier_id: supplier.id, inv_date: mForm.date, due_date: mForm.due || null, amount, note: mForm.note || null,
       });
     } else {
       await supabase.from("supplier_payments").insert({
@@ -358,10 +474,11 @@ function SupplierDetail({
   }
 
   function exportCsv() {
-    const header = [t("date"), t("movement"), t("debit"), t("credit"), t("running_balance"), t("note")];
+    const header = [t("date"), t("movement"), t("due_date"), t("debit"), t("credit"), t("running_balance"), t("note")];
     const lines = withBalance.map((m) => [
       m.date,
       m.kind === "invoice" ? t("type_invoice") : t("type_payment"),
+      byInvoice.get(m.id)?.due_date ?? "",
       m.kind === "invoice" ? m.amount : "",
       m.kind === "payment" ? m.amount : "",
       m.balance,
@@ -418,7 +535,7 @@ function SupplierDetail({
       )}
 
       {/* KPI */}
-      <div className="mb-5 grid grid-cols-3 gap-3">
+      <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <div className="card p-3">
           <div className="text-xs text-muted">{t("ordered")}</div>
           <div className="text-lg font-bold">{fmtMoney(totals.ordered, lang)}</div>
@@ -431,15 +548,31 @@ function SupplierDetail({
           <div className="text-xs text-muted">{t("to_pay")}</div>
           <div className={`text-lg font-bold ${totals.due > 0 ? "text-danger" : "text-success"}`}>{fmtMoney(totals.due, lang)}</div>
         </div>
+        <div className="card p-3">
+          <div className="text-xs text-muted">{t("overdue_total")}</div>
+          <div className={`text-lg font-bold ${overdue > 0 ? "text-danger" : ""}`}>{fmtMoney(overdue, lang)}</div>
+        </div>
       </div>
+      <p className="mb-4 text-xs text-muted">
+        {t("payment_terms_short")}: {terms > 0 ? fmtDays(terms, lang) : t("terms_cash")}
+      </p>
 
       {/* Nouveau mouvement */}
-      <div className="card no-print mb-4 grid gap-2 p-4 sm:grid-cols-5">
+      <div className="card no-print mb-4 grid gap-2 p-4 sm:grid-cols-3 xl:grid-cols-6">
         <select className="input" value={mForm.kind} onChange={(e) => setMForm({ ...mForm, kind: e.target.value as MovementKind })}>
           <option value="invoice">{t("type_invoice")}</option>
           <option value="payment">{t("type_payment")}</option>
         </select>
-        <input className="input" type="date" value={mForm.date} onChange={(e) => setMForm({ ...mForm, date: e.target.value })} />
+        <input className="input" type="date" title={t("date")} value={mForm.date}
+          onChange={(e) => setMForm({ ...mForm, date: e.target.value, due: e.target.value ? addDays(e.target.value, terms) : "" })} />
+        {mForm.kind === "invoice" ? (
+          <label className="flex flex-col text-[11px] text-muted">
+            {t("due_date")}
+            <input className="input" type="date" value={mForm.due} onChange={(e) => setMForm({ ...mForm, due: e.target.value })} />
+          </label>
+        ) : (
+          <div className="hidden sm:block" />
+        )}
         <input className="input" type="number" placeholder={t("amount")} value={mForm.amount} onChange={(e) => setMForm({ ...mForm, amount: e.target.value })} />
         <input className="input" placeholder={t("note")} value={mForm.note} onChange={(e) => setMForm({ ...mForm, note: e.target.value })} />
         <button onClick={addMovement} className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-fg">+ {t("add")}</button>
@@ -464,6 +597,7 @@ function SupplierDetail({
               <th className="px-4 py-2 text-start font-medium">{t("date")}</th>
               <th className="px-4 py-2 text-start font-medium">{t("movement")}</th>
               <th className="px-4 py-2 text-start font-medium">{t("note")}</th>
+              <th className="px-4 py-2 text-start font-medium">{t("due_date")}</th>
               <th className="px-4 py-2 text-end font-medium">{t("debit")}</th>
               <th className="px-4 py-2 text-end font-medium">{t("credit")}</th>
               <th className="px-4 py-2 text-end font-medium">{t("running_balance")}</th>
@@ -480,6 +614,22 @@ function SupplierDetail({
                   </span>
                 </td>
                 <td className="px-4 py-2.5 text-muted">{m.note}</td>
+                <td className="px-4 py-2.5">
+                  {m.kind === "invoice" && byInvoice.get(m.id) ? (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <input
+                        type="date"
+                        className="no-print rounded border border-border bg-surface px-1.5 py-0.5 text-xs"
+                        defaultValue={byInvoice.get(m.id)!.due_date}
+                        onBlur={(e) => {
+                          if (e.target.value && e.target.value !== byInvoice.get(m.id)!.due_date) updateDueDate(m.id, e.target.value);
+                        }}
+                      />
+                      <span className="print-area hidden">{byInvoice.get(m.id)!.due_date}</span>
+                      <DueBadge row={byInvoice.get(m.id)!} t={t} lang={lang} />
+                    </div>
+                  ) : "—"}
+                </td>
                 <td className="px-4 py-2.5 text-end">{m.kind === "invoice" ? fmtMoney(m.amount, lang) : "—"}</td>
                 <td className="px-4 py-2.5 text-end">{m.kind === "payment" ? fmtMoney(m.amount, lang) : "—"}</td>
                 <td className={`px-4 py-2.5 text-end font-semibold ${m.balance > 0 ? "text-danger" : "text-success"}`}>{fmtMoney(m.balance, lang)}</td>
@@ -489,12 +639,12 @@ function SupplierDetail({
               </tr>
             ))}
             {withBalance.length === 0 && (
-              <tr><td colSpan={7} className="p-6 text-center text-muted">{t("no_movements")}</td></tr>
+              <tr><td colSpan={8} className="p-6 text-center text-muted">{t("no_movements")}</td></tr>
             )}
           </tbody>
           <tfoot>
             <tr className="border-t-2 border-border bg-background font-bold">
-              <td className="px-4 py-2.5" colSpan={3}>{t("to_pay")}</td>
+              <td className="px-4 py-2.5" colSpan={4}>{t("to_pay")}</td>
               <td className="px-4 py-2.5 text-end">{fmtMoney(totals.ordered, lang)}</td>
               <td className="px-4 py-2.5 text-end">{fmtMoney(totals.paid, lang)}</td>
               <td className={`px-4 py-2.5 text-end ${totals.due > 0 ? "text-danger" : "text-success"}`}>{fmtMoney(totals.due, lang)}</td>
@@ -505,4 +655,19 @@ function SupplierDetail({
       </div>
     </div>
   );
+}
+
+// Pastille de statut d'échéance (en retard / bientôt dû / à venir / payé)
+function DueBadge({ row, t, lang }: { row: OpenInvoice; t: (k: string) => string; lang: "fr" | "ar" }) {
+  const cls =
+    row.status === "overdue" ? "bg-danger/10 text-danger"
+    : row.status === "due_soon" ? "bg-accent/10 text-accent"
+    : row.status === "paid" ? "bg-success/10 text-success"
+    : "bg-background text-muted";
+  const label =
+    row.status === "paid" ? t("due_paid")
+    : row.days === 0 ? t("due_today")
+    : row.days < 0 ? t("days_late").replace("{d}", fmtDays(row.days, lang))
+    : t("days_left").replace("{d}", fmtDays(row.days, lang));
+  return <span className={`whitespace-nowrap rounded px-2 py-0.5 text-xs font-medium ${cls}`}>{label}</span>;
 }

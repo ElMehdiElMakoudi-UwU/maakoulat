@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/lib/i18n";
-import { currentMonth, fmtMoney, fmtNum, fmtPct, monthLabel, monthRange, ttc } from "@/lib/format";
-import type { Product, Seller } from "@/lib/types";
+import { currentMonth, fmtMoney, fmtNum, fmtPct, monthLabel, monthRange, today, ttc } from "@/lib/format";
+import type { Product, Seller, Supplier, SupplierInvoice, SupplierPayment } from "@/lib/types";
+import { allocateInvoices, dueSummary } from "@/lib/supplierDues";
 
 interface SaleRow {
   product_id: string;
@@ -29,6 +31,28 @@ export default function DashboardPage() {
   const [caTargetInput, setCaTargetInput] = useState("");
   const [profitTargetInput, setProfitTargetInput] = useState("");
   const [loading, setLoading] = useState(true);
+  const [dues, setDues] = useState<ReturnType<typeof dueSummary> | null>(null);
+
+  // Échéances fournisseurs (indépendant du mois affiché)
+  useEffect(() => {
+    (async () => {
+      const [supRes, invRes, payRes] = await Promise.all([
+        supabase.from("suppliers").select("id,payment_terms_days"),
+        supabase.from("supplier_invoices").select("*"),
+        supabase.from("supplier_payments").select("supplier_id,amount"),
+      ]);
+      setDues(
+        dueSummary(
+          allocateInvoices(
+            (supRes.data as Supplier[]) ?? [],
+            (invRes.data as SupplierInvoice[]) ?? [],
+            (payRes.data as SupplierPayment[]) ?? [],
+            today()
+          )
+        )
+      );
+    })();
+  }, [supabase]);
 
   useEffect(() => {
     setLoading(true);
@@ -135,6 +159,31 @@ export default function DashboardPage() {
         <p className="p-8 text-center text-muted">{t("loading")}</p>
       ) : (
         <>
+          {/* Alerte échéances fournisseurs */}
+          {dues && (dues.overdue > 0.005 || dues.dueSoon > 0.005) && (
+            <Link
+              href="/fournisseurs"
+              className={`mb-5 flex flex-wrap items-center justify-between gap-2 rounded-xl border px-4 py-3 text-sm ${
+                dues.overdue > 0.005 ? "border-danger/40 bg-danger/5" : "border-accent/40 bg-accent/5"
+              }`}
+            >
+              <span className="flex flex-wrap items-center gap-x-4 gap-y-1">
+                <span className="font-semibold">⏰ {t("due_alert_title")}</span>
+                {dues.overdue > 0.005 && (
+                  <span className="font-medium text-danger">
+                    {fmtMoney(dues.overdue, lang)} {t("due_alert_overdue")} ({fmtNum(dues.overdueCount, lang)})
+                  </span>
+                )}
+                {dues.dueSoon > 0.005 && (
+                  <span className="font-medium text-accent">
+                    {fmtMoney(dues.dueSoon, lang)} {t("due_alert_soon")} ({fmtNum(dues.dueSoonCount, lang)})
+                  </span>
+                )}
+              </span>
+              <span className="text-primary">{t("see_schedule")}</span>
+            </Link>
+          )}
+
           {/* KPI principaux */}
           <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
             <Kpi label={t("revenue")} value={fmtMoney(totals.ca, lang)} accent="primary" />

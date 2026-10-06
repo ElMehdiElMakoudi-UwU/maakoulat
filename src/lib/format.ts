@@ -26,6 +26,19 @@ export function fmtPct(n: number, lang: Lang = "fr"): string {
 }
 
 /**
+ * Durée en jours. En arabe, accord du nom avec le nombre :
+ * 1 → يوم واحد, 2 → يومان, 3–10 → أيام, 11+ → يومًا.
+ */
+export function fmtDays(n: number, lang: Lang = "fr"): string {
+  const v = Math.abs(Math.round(n));
+  if (lang === "fr") return `${v} j`;
+  if (v === 1) return "يوم واحد";
+  if (v === 2) return "يومان";
+  const mod = v % 100;
+  return mod >= 3 && mod <= 10 ? `${v} أيام` : `${v} يومًا`;
+}
+
+/**
  * Prix de vente TTC à partir d'un prix HT (celui saisi sur la fiche produit)
  * et d'un taux de TVA en pourcentage. Toute vente est valorisée en TTC.
  */

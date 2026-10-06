@@ -15,6 +15,7 @@ const NAV_GROUPS = [
       { href: "/ventes", key: "nav_sales", icon: "🧾" },
       { href: "/journal", key: "nav_history", icon: "📖" },
       { href: "/analyse", key: "nav_analysis", icon: "📈" },
+      { href: "/prevision", key: "nav_forecast", icon: "🔮" },
       { href: "/rapports", key: "nav_reports", icon: "📄" },
     ],
   },

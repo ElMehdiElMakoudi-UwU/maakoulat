@@ -6,6 +6,7 @@ import { useI18n } from "@/lib/i18n";
 import { fmtMoney, today } from "@/lib/format";
 import { COMPANY } from "@/lib/company";
 import { buildBcPdf, pdfToBase64, fetchLogoDataUrl } from "@/lib/bcPdf";
+import OrderSuggest from "@/components/demand/OrderSuggest";
 import type { PurchaseOrder, PurchaseOrderItem, Product, Supplier, OrderStatus } from "@/lib/types";
 
 /** Ligne éditable dans l'éditeur (sans id lié à la DB tant que non enregistré). */
@@ -38,6 +39,7 @@ export default function BonsCommandePage() {
   const [saved, setSaved] = useState(false);
   const [sending, setSending] = useState(false);
   const [emailSent, setEmailSent] = useState(false);
+  const [showSuggest, setShowSuggest] = useState(false);
 
   async function loadAll() {
     setLoading(true);
@@ -76,12 +78,14 @@ export default function BonsCommandePage() {
 
   // ---- Ouverture / création ----
   function openNew() {
+    setShowSuggest(false);
     setEditId("");
     setHeader({ bc_number: "", supplier_id: "", order_date: today(), vat_rate: "20", status: "draft", note: "" });
     setLines([emptyLine()]);
     setSaved(false);
   }
   function openEdit(o: PurchaseOrder) {
+    setShowSuggest(false);
     setEditId(o.id);
     setHeader({
       bc_number: o.bc_number ?? "",
@@ -128,6 +132,27 @@ export default function BonsCommandePage() {
       })
     );
   }
+  // Applique les quantités suggérées : met à jour les lignes existantes, ajoute les autres.
+  function applySuggestion(sugg: { product: Product; quantity: number }[]) {
+    setLines((ls) => {
+      const next = ls.filter((l) => l.designation.trim());
+      for (const { product, quantity } of sugg) {
+        const label = product.name_fr || product.name;
+        const idx = next.findIndex((l) => l.designation === label || l.designation === product.name);
+        if (idx >= 0) next[idx] = { ...next[idx], quantity: String(quantity) };
+        else
+          next.push({
+            unit: product.unit ?? "",
+            designation: label,
+            quantity: String(quantity),
+            unit_price: String(product.purchase_price),
+          });
+      }
+      return next.length ? next : [emptyLine()];
+    });
+    setShowSuggest(false);
+  }
+
   function addLine() {
     setLines((ls) => [...ls, emptyLine()]);
   }
@@ -361,6 +386,10 @@ export default function BonsCommandePage() {
         <div className="flex items-center gap-2">
           {saved && <span className="text-sm font-medium text-success">{t("order_saved")}</span>}
           {emailSent && <span className="text-sm font-medium text-success">{t("email_sent")}</span>}
+          <button onClick={() => setShowSuggest((v) => !v)} disabled={!header.supplier_id || supplierProducts.length === 0}
+            className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-semibold disabled:opacity-60">
+            📈 {t("dm_suggest_btn")}
+          </button>
           <button onClick={() => window.print()} className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-semibold">
             🖨️ {t("print_order")}
           </button>
@@ -412,6 +441,15 @@ export default function BonsCommandePage() {
           </label>
         </div>
       </div>
+
+      {showSuggest && header.supplier_id && (
+        <OrderSuggest
+          products={supplierProducts}
+          orderDate={header.order_date}
+          onApply={applySuggestion}
+          onClose={() => setShowSuggest(false)}
+        />
+      )}
 
       <datalist id="product-list">
         {productLabels.map((l) => <option key={l} value={l} />)}

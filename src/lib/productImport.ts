@@ -51,7 +51,7 @@ function normHeader(s: string): string {
     .replace(/[^a-z0-9]/g, "");
 }
 
-function splitCsvLine(line: string): string[] {
+export function splitCsvLine(line: string): string[] {
   const out: string[] = [];
   let cur = "";
   let inQ = false;

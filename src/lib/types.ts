@@ -41,6 +41,7 @@ export interface Supplier {
   address: string | null;
   contact_name: string | null;
   notes: string | null;
+  payment_terms_days: number; // délai de paiement par défaut (jours)
   active: boolean;
   sort_order: number;
 }
@@ -66,8 +67,10 @@ export interface SupplierInvoice {
   id: string;
   supplier_id: string;
   inv_date: string;
+  due_date: string | null; // échéance ; null = inv_date + délai fournisseur
   amount: number;
   note: string | null;
+  created_at?: string;
 }
 
 export type OrderStatus = "draft" | "sent" | "received";
@@ -195,4 +198,39 @@ export interface MonthlySettings {
   ca_target: number;
   profit_target: number;
   opening_balance: number;
+}
+
+export interface SalesHistory {
+  id: string;
+  product_id: string;
+  seller_kind: SellerKind;
+  period_start: string; // YYYY-MM-DD
+  period_end: string; // inclus ; = period_start pour une vente journalière
+  quantity: number;
+}
+
+export type SeasonAutoKind = "ramadan" | "eid_adha" | "summer";
+
+export interface DemandSeason {
+  id: string;
+  name: string;
+  lead_days: number;
+  auto_kind: SeasonAutoKind | null;
+  sort_order: number;
+}
+
+export interface DemandSeasonPeriod {
+  id: string;
+  season_id: string;
+  start_date: string;
+  end_date: string;
+}
+
+export interface DemandCoefficient {
+  id: string;
+  season_id: string;
+  product_id: string | null;
+  category: string | null;
+  seller_kind: SellerKind | null;
+  coefficient: number;
 }

@@ -8,10 +8,12 @@ import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/lib/i18n";
 import { currentMonth, fmtMoney, monthLabel, monthRange, ttc } from "@/lib/format";
 import { SERIES, INK } from "@/lib/chartColors";
+import TreasuryForecast from "@/components/TreasuryForecast";
 
 export default function TresoreriePage() {
   const { t, lang } = useI18n();
   const supabase = useMemo(() => createClient(), []);
+  const [tab, setTab] = useState<"month" | "forecast">("month");
   const [month, setMonth] = useState(currentMonth());
   const [loading, setLoading] = useState(true);
   const [opening, setOpening] = useState(0);
@@ -100,13 +102,32 @@ export default function TresoreriePage() {
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold">{t("treasury_title")}</h1>
-          <p className="text-sm text-muted">{t("treasury_hint")}</p>
+          <p className="text-sm text-muted">{tab === "month" ? t("treasury_hint") : t("fc_subtitle")}</p>
         </div>
-        <input type="month" value={month} onChange={(e) => setMonth(e.target.value)}
-          className="rounded-lg border border-border bg-surface px-3 py-2 outline-none focus:border-primary" />
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex rounded-lg border border-border bg-surface p-0.5">
+            {(["month", "forecast"] as const).map((k) => (
+              <button
+                key={k}
+                onClick={() => setTab(k)}
+                className={`rounded-md px-3 py-1.5 text-sm font-medium ${
+                  tab === k ? "bg-primary text-primary-fg" : "text-foreground hover:bg-background"
+                }`}
+              >
+                {k === "month" ? t("fc_tab_month") : t("fc_tab_forecast")}
+              </button>
+            ))}
+          </div>
+          {tab === "month" && (
+            <input type="month" value={month} onChange={(e) => setMonth(e.target.value)}
+              className="rounded-lg border border-border bg-surface px-3 py-2 outline-none focus:border-primary" />
+          )}
+        </div>
       </div>
 
-      {loading ? (
+      {tab === "forecast" ? (
+        <TreasuryForecast />
+      ) : loading ? (
         <p className="p-8 text-center text-muted">{t("loading")}</p>
       ) : (
         <>
