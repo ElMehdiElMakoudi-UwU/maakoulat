@@ -8,7 +8,7 @@ type Dict = Record<string, { fr: string; ar: string }>;
 
 // Toutes les chaînes de l'interface (FR + AR)
 export const DICT: Dict = {
-  appName: { fr: "Maakoulat", ar: "معكولات" },
+  appName: { fr: "Maakoulatcom", ar: "معكولاتكوم" },
   tagline: { fr: "Gestion d'entreprise", ar: "تدبير الشركة" },
 
   // Navigation
@@ -27,6 +27,7 @@ export const DICT: Dict = {
   nav_reports: { fr: "Rapports", ar: "التقارير" },
   logout: { fr: "Déconnexion", ar: "تسجيل الخروج" },
   nav_group_main: { fr: "Activité", ar: "النشاط" },
+  nav_group_analysis: { fr: "Suivi & analyse", ar: "التتبع والتحليل" },
   nav_group_finance: { fr: "Finances", ar: "المالية" },
   nav_group_docs: { fr: "Documents", ar: "الوثائق" },
   nav_group_directory: { fr: "Répertoire", ar: "الدليل" },

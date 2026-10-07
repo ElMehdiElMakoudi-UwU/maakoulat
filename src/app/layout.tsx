@@ -10,7 +10,7 @@ const cairo = Cairo({
 });
 
 export const metadata: Metadata = {
-  title: "Maakoulat — Gestion",
+  title: "Maakoulatcom — Gestion",
   description: "Suivi des ventes, fournisseurs et charges",
 };
 

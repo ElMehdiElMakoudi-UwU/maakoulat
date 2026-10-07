@@ -20,6 +20,7 @@ export default function JournalPage() {
   const { t, lang } = useI18n();
   const supabase = useMemo(() => createClient(), []);
   const [month, setMonth] = useState(currentMonth());
+  const [sellerId, setSellerId] = useState<string>("all");
   const [sellers, setSellers] = useState<Seller[]>([]);
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
@@ -46,6 +47,7 @@ export default function JournalPage() {
   const days = useMemo(() => {
     const map = new Map<string, { date: string; seller_id: string; ca: number; profit: number; items: number; lines: number }>();
     for (const r of rows) {
+      if (sellerId !== "all" && r.seller_id !== sellerId) continue;
       const key = `${r.sale_date}__${r.seller_id}`;
       const cur = map.get(key) ?? { date: r.sale_date, seller_id: r.seller_id, ca: 0, profit: 0, items: 0, lines: 0 };
       const vat = (Array.isArray(r.products) ? r.products[0] : r.products)?.vat_rate ?? 0;
@@ -58,7 +60,7 @@ export default function JournalPage() {
     return Array.from(map.values()).sort((a, b) =>
       a.date === b.date ? a.seller_id.localeCompare(b.seller_id) : b.date.localeCompare(a.date)
     );
-  }, [rows]);
+  }, [rows, sellerId]);
 
   const sellerName = (id: string) => sellers.find((s) => s.id === id)?.name ?? "—";
   const fmtDate = (d: string) =>
@@ -73,8 +75,15 @@ export default function JournalPage() {
           <h1 className="text-2xl font-bold">{t("history_title")}</h1>
           <p className="text-sm text-muted">{t("history_hint")}</p>
         </div>
-        <input type="month" value={month} onChange={(e) => setMonth(e.target.value)}
-          className="rounded-lg border border-border bg-surface px-3 py-2 outline-none focus:border-primary" />
+        <div className="flex flex-wrap items-center gap-2">
+          <select value={sellerId} onChange={(e) => setSellerId(e.target.value)}
+            className="rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-primary">
+            <option value="all">{t("all_sellers")}</option>
+            {sellers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+          <input type="month" value={month} onChange={(e) => setMonth(e.target.value)}
+            className="rounded-lg border border-border bg-surface px-3 py-2 outline-none focus:border-primary" />
+        </div>
       </div>
 
       <div className="card overflow-x-auto">

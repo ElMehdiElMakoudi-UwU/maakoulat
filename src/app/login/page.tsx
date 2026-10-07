@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/lib/i18n";
 import LangToggle from "@/components/LangToggle";
+import { COMPANY } from "@/lib/company";
 
 export default function LoginPage() {
   const { t } = useI18n();
@@ -36,9 +37,12 @@ export default function LoginPage() {
       </div>
       <div className="card w-full max-w-sm p-7 shadow-sm">
         <div className="mb-6 text-center">
-          <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary text-2xl font-bold text-primary-fg">
-            M
-          </div>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={COMPANY.logoPath}
+            alt={t("appName")}
+            className="mx-auto mb-3 h-28 w-auto rounded-xl bg-white object-contain"
+          />
           <h1 className="text-xl font-bold">{t("appName")}</h1>
           <p className="text-sm text-muted">{t("tagline")}</p>
         </div>
