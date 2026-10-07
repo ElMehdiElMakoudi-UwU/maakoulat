@@ -13,7 +13,7 @@ import type {
 const PAGE = 1000;
 
 /** Lit toutes les lignes d'une requête (Supabase limite chaque réponse à 1000 lignes). */
-async function fetchAll<T>(build: (from: number, to: number) => PromiseLike<{ data: unknown; error: unknown }>): Promise<T[]> {
+export async function fetchAll<T>(build: (from: number, to: number) => PromiseLike<{ data: unknown; error: unknown }>): Promise<T[]> {
   const out: T[] = [];
   for (let from = 0; ; from += PAGE) {
     const { data, error } = await build(from, from + PAGE - 1);

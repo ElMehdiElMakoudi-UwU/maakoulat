@@ -15,6 +15,7 @@ const NAV_GROUPS = [
       { href: "/ventes", key: "nav_sales", icon: "🧾" },
       { href: "/journal", key: "nav_history", icon: "📖" },
       { href: "/analyse", key: "nav_analysis", icon: "📈" },
+      { href: "/analyse-produits", key: "nav_product_analysis", icon: "🔬" },
       { href: "/prevision", key: "nav_forecast", icon: "🔮" },
       { href: "/rapports", key: "nav_reports", icon: "📄" },
     ],
@@ -69,7 +70,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   const isActive = (href: string) =>
-    href === "/" ? pathname === "/" : pathname.startsWith(href);
+    href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(href + "/");
 
   return (
     <div className="flex min-h-screen">
