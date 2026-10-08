@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* Mode sombre piloté par la classe .dark sur <html> (voir ThemeToggle) */
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
   --background: #f6f7f9;
   --surface: #ffffff;
@@ -11,6 +14,34 @@
   --accent: #f59e0b;
   --danger: #dc2626;
   --success: #16a34a;
+
+  /* Encre des graphiques (recharts) */
+  --ink-primary: #0f172a;
+  --ink-secondary: #52514e;
+  --ink-muted: #94a3b8;
+  --ink-grid: #e2e8f0;
+
+  color-scheme: light;
+}
+
+.dark {
+  --background: #0b1120;
+  --surface: #151d2e;
+  --foreground: #e2e8f0;
+  --muted: #94a3b8;
+  --border: #283447;
+  --primary: #12896a;
+  --primary-fg: #ffffff;
+  --accent: #fbbf24;
+  --danger: #f87171;
+  --success: #4ade80;
+
+  --ink-primary: #e2e8f0;
+  --ink-secondary: #a8b3c4;
+  --ink-muted: #64748b;
+  --ink-grid: #283447;
+
+  color-scheme: dark;
 }
 
 @theme inline {
@@ -66,6 +97,17 @@ input[type="number"] {
 
 /* ---------- Impression / export PDF ---------- */
 @media print {
+  .dark {
+    --background: #f6f7f9;
+    --surface: #ffffff;
+    --foreground: #0f172a;
+    --muted: #64748b;
+    --border: #e2e8f0;
+    --ink-primary: #0f172a;
+    --ink-secondary: #52514e;
+    --ink-grid: #e2e8f0;
+    color-scheme: light;
+  }
   aside,
   header,
   .no-print {

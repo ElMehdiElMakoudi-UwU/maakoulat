@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/lib/i18n";
 import LangToggle from "@/components/LangToggle";
+import ThemeToggle from "@/components/ThemeToggle";
 import { COMPANY } from "@/lib/company";
 
 export default function LoginPage() {
@@ -32,8 +33,9 @@ export default function LoginPage() {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background p-4">
-      <div className="absolute end-4 top-4">
+      <div className="absolute end-4 top-4 flex items-center gap-2">
         <LangToggle />
+        <ThemeToggle />
       </div>
       <div className="card w-full max-w-sm p-7 shadow-sm">
         <div className="mb-6 text-center">

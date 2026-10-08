@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/lib/i18n";
 import LangToggle from "@/components/LangToggle";
+import ThemeToggle from "@/components/ThemeToggle";
 import { COMPANY } from "@/lib/company";
 
 type NavItem = { href: string; key: string; icon: string };
@@ -97,7 +98,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         <div className="mt-4 flex flex-col gap-2 border-t border-border pt-4">
           <NavLink item={SETTINGS_ITEM} active={isActivePath(pathname, SETTINGS_ITEM.href)} />
           <div className="flex items-center justify-between gap-2">
-            <LangToggle />
+            <div className="flex items-center gap-2">
+              <LangToggle />
+              <ThemeToggle />
+            </div>
             <button
               onClick={logout}
               className="rounded-lg px-3 py-2 text-sm text-danger hover:bg-background"
@@ -115,6 +119,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           <Brand small />
           <div className="flex items-center gap-2">
             <LangToggle />
+            <ThemeToggle />
             <button
               onClick={() => setMobileOpen((o) => !o)}
               aria-expanded={mobileOpen}

@@ -16,10 +16,11 @@ export const STATUS = {
   critical: "#e34948",
 };
 
+// Variables CSS (globals.css) : suivent automatiquement le thème clair/sombre.
 export const INK = {
-  primary: "#0f172a",
-  secondary: "#52514e",
-  muted: "#94a3b8",
-  grid: "#e2e8f0",
-  surface: "#ffffff",
+  primary: "var(--ink-primary)",
+  secondary: "var(--ink-secondary)",
+  muted: "var(--ink-muted)",
+  grid: "var(--ink-grid)",
+  surface: "var(--surface)",
 };
