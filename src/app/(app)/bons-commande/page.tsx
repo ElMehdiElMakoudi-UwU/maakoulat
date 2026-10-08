@@ -220,6 +220,45 @@ export default function BonsCommandePage() {
     }
   }
 
+  // ---- PDF du bon de commande (le même pour l'email et le téléchargement) ----
+  async function makeBcDoc(validLines: EditLine[], supplierName: string) {
+    const logo = await fetchLogoDataUrl();
+    return buildBcPdf(
+      {
+        bcNumber: header.bc_number.trim(),
+        orderDate: header.order_date,
+        supplierName,
+        lines: validLines.map((l) => ({
+          unit: l.unit,
+          designation: l.designation,
+          quantity: parseFloat(l.quantity) || 0,
+          unitPrice: parseFloat(l.unit_price) || 0,
+        })),
+        totalHT: editTotalHT,
+        vatRate,
+        vatAmount: editVAT,
+        totalTTC: editTTC,
+      },
+      logo
+    );
+  }
+
+  function bcFilename() {
+    const bcTag = header.bc_number.trim() ? `-${header.bc_number.trim()}` : "";
+    return `BC${bcTag}.pdf`;
+  }
+
+  async function downloadPdf() {
+    const validLines = lines.filter((l) => l.designation.trim());
+    if (validLines.length === 0) {
+      alert(t("no_data"));
+      return;
+    }
+    const supplier = suppliers.find((s) => s.id === header.supplier_id);
+    const doc = await makeBcDoc(validLines, supplier?.name ?? "");
+    doc.save(bcFilename());
+  }
+
   // ---- Envoi du bon de commande par email (PDF joint, via Gmail côté serveur) ----
   async function sendEmail() {
     if (!header.supplier_id) {
@@ -245,28 +284,9 @@ export default function BonsCommandePage() {
       const orderId = await persist();
       if (orderId) setEditId(orderId);
 
-      const logo = await fetchLogoDataUrl();
-      const doc = buildBcPdf(
-        {
-          bcNumber: header.bc_number.trim(),
-          orderDate: header.order_date,
-          supplierName: supplier?.name ?? "",
-          lines: validLines.map((l) => ({
-            unit: l.unit,
-            designation: l.designation,
-            quantity: parseFloat(l.quantity) || 0,
-            unitPrice: parseFloat(l.unit_price) || 0,
-          })),
-          totalHT: editTotalHT,
-          vatRate,
-          vatAmount: editVAT,
-          totalTTC: editTTC,
-        },
-        logo
-      );
+      const doc = await makeBcDoc(validLines, supplier?.name ?? "");
       const pdfBase64 = pdfToBase64(doc);
-      const bcTag = header.bc_number.trim() ? `-${header.bc_number.trim()}` : "";
-      const filename = `BC${bcTag}.pdf`;
+      const filename = bcFilename();
       const subject = `${t("order")}${header.bc_number.trim() ? ` N° ${header.bc_number.trim()}` : ""} — ${COMPANY.name}`;
       const text =
         `Bonjour,\n\nVeuillez trouver ci-joint notre bon de commande` +
@@ -393,6 +413,10 @@ export default function BonsCommandePage() {
           <button onClick={() => window.print()} className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-semibold">
             🖨️ {t("print_order")}
           </button>
+          <button onClick={downloadPdf} disabled={!header.supplier_id}
+            className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-semibold disabled:opacity-60">
+            ⬇️ {t("download_pdf")}
+          </button>
           <button onClick={sendEmail} disabled={sending || saving || !header.supplier_id}
             className="rounded-lg border border-primary bg-surface px-4 py-2 text-sm font-semibold text-primary disabled:opacity-60">
             {sending ? t("sending_email") : `✉️ ${t("send_email_btn")}`}
@@ -483,11 +507,11 @@ export default function BonsCommandePage() {
           <table className="w-full min-w-[640px] text-sm">
             <thead>
               <tr className="border-b border-border text-muted">
-                <th className="px-2 py-2 text-start font-medium">{t("unit")}</th>
+                <th className="w-24 px-2 py-2 text-start font-medium print:w-16">{t("unit")}</th>
                 <th className="px-2 py-2 text-start font-medium">{t("designation")}</th>
-                <th className="px-2 py-2 text-end font-medium">{t("quantity")}</th>
-                <th className="px-2 py-2 text-end font-medium">{t("unit_price_ht")}</th>
-                <th className="px-2 py-2 text-end font-medium">{t("line_total_ht")}</th>
+                <th className="w-24 px-2 py-2 text-end font-medium print:w-14">{t("quantity")}</th>
+                <th className="w-32 px-2 py-2 text-end font-medium print:w-28">{t("unit_price_ht")}</th>
+                <th className="w-36 px-2 py-2 text-end font-medium print:w-32">{t("line_total_ht")}</th>
                 <th className="no-print px-2 py-2"></th>
               </tr>
             </thead>
@@ -495,27 +519,31 @@ export default function BonsCommandePage() {
               {lines.map((l, idx) => {
                 const lt = (parseFloat(l.quantity) || 0) * (parseFloat(l.unit_price) || 0);
                 return (
-                  <tr key={idx}>
+                  <tr key={idx} className={l.designation.trim() ? "" : "no-print"}>
                     <td className="px-2 py-1.5">
-                      <input className="input print:border-0 print:bg-transparent print:px-0" value={l.unit}
+                      <input className="input print:hidden" value={l.unit}
                         disabled={!header.supplier_id}
                         onChange={(e) => updateLine(idx, { unit: e.target.value })} />
+                      <span className="hidden print:block">{l.unit}</span>
                     </td>
                     <td className="px-2 py-1.5">
-                      <input className="input print:border-0 print:bg-transparent print:px-0" list="product-list"
+                      <input className="input print:hidden" list="product-list"
                         disabled={!header.supplier_id}
                         placeholder={header.supplier_id ? t("pick_product") : t("select_supplier_first")} value={l.designation}
                         onChange={(e) => onDesignationChange(idx, e.target.value)} />
+                      <span className="hidden whitespace-normal break-words print:block">{l.designation}</span>
                     </td>
                     <td className="px-2 py-1.5">
-                      <input className="input text-end print:border-0 print:bg-transparent print:px-0" type="number" value={l.quantity}
+                      <input className="input text-end print:hidden" type="number" value={l.quantity}
                         disabled={!header.supplier_id}
                         onChange={(e) => updateLine(idx, { quantity: e.target.value })} />
+                      <span className="hidden text-end print:block">{l.quantity}</span>
                     </td>
                     <td className="px-2 py-1.5">
-                      <input className="input text-end print:border-0 print:bg-transparent print:px-0" type="number" value={l.unit_price}
+                      <input className="input text-end print:hidden" type="number" value={l.unit_price}
                         disabled={!header.supplier_id}
                         onChange={(e) => updateLine(idx, { unit_price: e.target.value })} />
+                      <span className="hidden text-end whitespace-nowrap print:block">{l.unit_price ? fmtMoney(parseFloat(l.unit_price) || 0, lang) : ""}</span>
                     </td>
                     <td className="px-2 py-1.5 text-end font-semibold whitespace-nowrap">{fmtMoney(lt, lang)}</td>
                     <td className="no-print px-2 py-1.5 text-end">
