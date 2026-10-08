@@ -41,22 +41,29 @@ export default function BonsCommandePage() {
   const [emailSent, setEmailSent] = useState(false);
   const [showSuggest, setShowSuggest] = useState(false);
 
-  async function loadAll() {
-    setLoading(true);
-    const [oRes, iRes, sRes, pRes] = await Promise.all([
+  // Requêtes seules (aucun setState), pour pouvoir les lancer depuis l'effet de montage.
+  function queryAll() {
+    return Promise.all([
       supabase.from("purchase_orders").select("*").order("order_date", { ascending: false }),
       supabase.from("purchase_order_items").select("*").order("sort_order"),
       supabase.from("suppliers").select("*").order("sort_order"),
       supabase.from("products").select("*").eq("active", true).order("name"),
     ]);
+  }
+  function applyAll([oRes, iRes, sRes, pRes]: Awaited<ReturnType<typeof queryAll>>) {
     setOrders((oRes.data as PurchaseOrder[]) ?? []);
     setItems((iRes.data as PurchaseOrderItem[]) ?? []);
     setSuppliers((sRes.data as Supplier[]) ?? []);
     setProducts((pRes.data as Product[]) ?? []);
     setLoading(false);
   }
+  async function loadAll() {
+    setLoading(true);
+    applyAll(await queryAll());
+  }
   useEffect(() => {
-    loadAll();
+    // `loading` vaut déjà true au montage : on applique les données dans le callback.
+    queryAll().then(applyAll);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -325,20 +332,14 @@ export default function BonsCommandePage() {
     s === "sent" ? t("status_sent") : s === "received" ? t("status_received") : t("status_draft");
 
   // Produits liés au fournisseur sélectionné (seuls ceux-ci sont proposés dans les lignes).
-  const supplierProducts = useMemo(
-    () => (header.supplier_id ? products.filter((p) => p.supplier_id === header.supplier_id) : []),
-    [products, header.supplier_id]
-  );
+  const supplierProducts = header.supplier_id
+    ? products.filter((p) => p.supplier_id === header.supplier_id)
+    : [];
 
   // datalist de désignations (catalogue du fournisseur)
-  const productLabels = useMemo(() => {
-    const set = new Set<string>();
-    for (const p of supplierProducts) {
-      const label = p.name_fr || p.name;
-      if (label) set.add(label);
-    }
-    return Array.from(set);
-  }, [supplierProducts]);
+  const productLabels = Array.from(
+    new Set(supplierProducts.map((p) => p.name_fr || p.name).filter(Boolean))
+  );
 
   if (loading) return <p className="p-8 text-center text-muted">{t("loading")}</p>;
 
