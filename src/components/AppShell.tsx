@@ -29,6 +29,7 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/analyse-produits", key: "nav_product_analysis", icon: "🔬" },
       { href: "/prevision", key: "nav_forecast", icon: "🔮" },
       { href: "/rapports", key: "nav_reports", icon: "📄" },
+      { href: "/rapport-annuel", key: "nav_annual_report", icon: "📅" },
     ],
   },
   {

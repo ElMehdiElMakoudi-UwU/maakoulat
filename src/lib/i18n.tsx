@@ -536,6 +536,28 @@ export const DICT: Dict = {
   rank: { fr: "#", ar: "#" },
   share_hint: { fr: "Astuce : « Imprimer » → « Enregistrer en PDF » pour partager sur WhatsApp.", ar: "نصيحة: «طباعة» ثم «حفظ PDF» للمشاركة عبر واتساب." },
 
+  // Rapport annuel
+  nav_annual_report: { fr: "Rapport annuel", ar: "التقرير السنوي" },
+  annual_title: { fr: "Rapport annuel", ar: "التقرير السنوي" },
+  annual_hint: { fr: "Situation complète de l'année : ventes, charges, résultat et fournisseurs.", ar: "الوضعية الكاملة للسنة: المبيعات، المصاريف، النتيجة والموردون." },
+  annual_report_title: { fr: "Bilan de l'année", ar: "حصيلة سنة" },
+  annual_active_months: { fr: "mois d'activité", ar: "أشهر نشاط" },
+  annual_avg_month: { fr: "CA moyen / mois", ar: "متوسط المداخيل / شهر" },
+  annual_best_month: { fr: "Meilleur mois", ar: "أفضل شهر" },
+  annual_monthly_chart: { fr: "Évolution mois par mois", ar: "التطور شهرا بشهر" },
+  annual_by_month: { fr: "Détail par mois", ar: "التفصيل الشهري" },
+  annual_charges_hint: {
+    fr: "Charges fixes comptées à partir du premier mois avec ventes, jusqu'au mois en cours ; charges ponctuelles dans leur mois.",
+    ar: "المصاريف الثابتة تُحتسب ابتداءً من أول شهر فيه مبيعات إلى الشهر الحالي؛ والمصاريف الظرفية في شهرها.",
+  },
+  annual_purchases: { fr: "Achats fournisseurs", ar: "مشتريات الموردين" },
+  annual_share: { fr: "Part", ar: "الحصة" },
+  annual_by_category: { fr: "Par catégorie", ar: "حسب الفئة" },
+  annual_suppliers: { fr: "Situation fournisseurs", ar: "وضعية الموردين" },
+  annual_remaining_due: { fr: "Reste dû", ar: "الباقي للأداء" },
+  annual_due_hint_past: { fr: "Achats et paiements de l'année ; reste dû au 31 décembre.", ar: "مشتريات ومدفوعات السنة؛ الباقي للأداء في 31 دجنبر." },
+  annual_due_hint_current: { fr: "Achats et paiements de l'année ; reste dû à aujourd'hui.", ar: "مشتريات ومدفوعات السنة؛ الباقي للأداء إلى اليوم." },
+
   // Prévision de la demande
   nav_forecast: { fr: "Prévision demande", ar: "توقع الطلب" },
   dm_title: { fr: "Prévision de la demande", ar: "توقع الطلب" },
