@@ -23,6 +23,7 @@ export const DICT: Dict = {
   nav_bank: { fr: "Banque", ar: "البنك" },
   nav_clients: { fr: "Clients", ar: "الزبناء" },
   nav_ventilation: { fr: "Ventilation", ar: "توزيع المداخيل" },
+  nav_payroll: { fr: "Paie", ar: "الأجور" },
   nav_invoices: { fr: "Factures", ar: "الفواتير" },
   nav_reports: { fr: "Rapports", ar: "التقارير" },
   logout: { fr: "Déconnexion", ar: "تسجيل الخروج" },
@@ -247,8 +248,29 @@ export const DICT: Dict = {
   duplicate: { fr: "Dupliquer", ar: "نسخ" },
 
   // Charges
-  charges_title: { fr: "Charges fixes", ar: "المصاريف الثابتة" },
+  charges_title: { fr: "Charges", ar: "المصاريف" },
   add_charge: { fr: "Ajouter une charge", ar: "إضافة مصروف" },
+  fixed_charges: { fr: "Charges fixes", ar: "المصاريف الثابتة" },
+  commissions: { fr: "Commissions vendeurs", ar: "عمولات البائعين" },
+  commissions_hint: { fr: "Calculées automatiquement : CA HT par catégorie × taux. Le Traiteur n'a pas de commission.", ar: "تُحسب تلقائيا: رقم المعاملات دون ضريبة لكل فئة × النسبة. الممون لا يتقاضى عمولة." },
+  commission: { fr: "Commission", ar: "العمولة" },
+  commission_rates: { fr: "Taux par catégorie", ar: "النسب حسب الفئة" },
+  commission_rate: { fr: "Taux %", ar: "النسبة %" },
+  commission_base: { fr: "CA HT soumis", ar: "رقم المعاملات الخاضع (دون ضريبة)" },
+  no_category: { fr: "(sans catégorie)", ar: "(بدون فئة)" },
+  auto_short: { fr: "Auto", ar: "تلقائي" },
+
+  // Paie
+  payroll_title: { fr: "Paie vendeurs", ar: "أجور البائعين" },
+  payslip: { fr: "Bulletin de paie", ar: "ورقة الأجر" },
+  base_salary: { fr: "Salaire de base", ar: "الأجر الأساسي" },
+  total_salary: { fr: "Total salaire du mois", ar: "مجموع أجر الشهر" },
+  sales_of_month: { fr: "Ventes du mois", ar: "مبيعات الشهر" },
+  amounts_ht_note: { fr: "Montants des ventes hors taxes (HT). Commission = ventes HT × taux de la catégorie.", ar: "مبالغ المبيعات دون احتساب الضريبة. العمولة = المبيعات دون ضريبة × نسبة الفئة." },
+  signature_seller: { fr: "Signature du vendeur", ar: "توقيع البائع" },
+  signature_employer: { fr: "Signature de l'employeur", ar: "توقيع المشغل" },
+  no_commission_seller: { fr: "Ce vendeur ne touche pas de commission.", ar: "هذا البائع لا يتقاضى عمولة." },
+  payroll_migration_missing: { fr: "Colonne salaire de base introuvable — exécutez supabase/migration_payroll.sql dans Supabase.", ar: "عمود الأجر الأساسي غير موجود — نفذ supabase/migration_payroll.sql في Supabase." },
 
   currency: { fr: "DH", ar: "درهم" },
 

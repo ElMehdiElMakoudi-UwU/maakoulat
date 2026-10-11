@@ -17,7 +17,8 @@ import { useI18n } from "@/lib/i18n";
 import { fmtMoney, fmtNum, fmtPct, today, ttc } from "@/lib/format";
 import { fetchAll } from "@/lib/demandData";
 import { SERIES, INK } from "@/lib/chartColors";
-import type { Charge, Seller, Supplier, SupplierInvoice, SupplierPayment } from "@/lib/types";
+import { rateMap, totalCommission } from "@/lib/commissions";
+import type { Charge, CommissionRate, Seller, Supplier, SupplierInvoice, SupplierPayment } from "@/lib/types";
 
 interface Prod { id: string; name: string; category: string | null; vat_rate: number }
 interface Sale { product_id: string; seller_id: string; sale_date: string; quantity: number; purchase_price: number; sale_price: number }
@@ -33,6 +34,7 @@ export default function RapportAnnuelPage() {
   const [products, setProducts] = useState<Record<string, Prod>>({});
   const [sales, setSales] = useState<Sale[]>([]);
   const [charges, setCharges] = useState<Charge[]>([]);
+  const [rates, setRates] = useState<CommissionRate[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [invoices, setInvoices] = useState<SupplierInvoice[]>([]);
   const [payments, setPayments] = useState<SupplierPayment[]>([]);
@@ -54,6 +56,8 @@ export default function RapportAnnuelPage() {
       for (const p of prod) pmap[p.id] = p;
       setProducts(pmap);
       setCharges(ch);
+      const { data: rateRows } = await supabase.from("commission_rates").select("category,rate");
+      setRates((rateRows as CommissionRate[]) ?? []);
       setSuppliers(sup);
       setInvoices(inv);
       setPayments(pay);
@@ -97,23 +101,28 @@ export default function RapportAnnuelPage() {
 
   const monthly = useMemo(() => {
     const recurring = charges.filter((c) => c.active && c.month === null).reduce((s, c) => s + Number(c.amount), 0);
+    const rm = rateMap(rates);
     return MONTHS.map((mm) => {
       const key = `${year}-${mm}`;
       let ca = 0, profit = 0, qty = 0;
+      const monthSales: Sale[] = [];
       for (const s of sales) {
         if (!s.sale_date.startsWith(key)) continue;
+        monthSales.push(s);
         ca += caOf(s);
         profit += profitOf(s);
         qty += s.quantity;
       }
       const oneOff = charges.filter((c) => c.active && c.month === key).reduce((s, c) => s + Number(c.amount), 0);
-      const ch = oneOff + (chargedMonths.has(key) ? recurring : 0);
+      // charges = fixes/ponctuelles + commissions vendeurs (HT × taux catégorie)
+      const commission = totalCommission(monthSales, sellers, (id) => products[id]?.category, rm);
+      const ch = oneOff + (chargedMonths.has(key) ? recurring : 0) + commission;
       const purchases = invoices.filter((i) => i.inv_date.startsWith(key)).reduce((s, i) => s + Number(i.amount), 0);
       const paid = payments.filter((p) => p.pay_date.startsWith(key)).reduce((s, p) => s + Number(p.amount), 0);
       return { key, ca, profit, qty, charges: ch, net: profit - ch, purchases, paid };
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sales, charges, invoices, payments, products, year, chargedMonths]);
+  }, [sales, charges, rates, sellers, invoices, payments, products, year, chargedMonths]);
 
   const tot = useMemo(() => {
     const sum = (k: "ca" | "profit" | "qty" | "charges" | "net" | "purchases" | "paid") =>
