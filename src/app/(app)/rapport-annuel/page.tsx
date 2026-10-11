@@ -18,6 +18,7 @@ import { fmtMoney, fmtNum, fmtPct, today, ttc } from "@/lib/format";
 import { fetchAll } from "@/lib/demandData";
 import { SERIES, INK } from "@/lib/chartColors";
 import { rateMap, totalCommission } from "@/lib/commissions";
+import { totalBonuses, type BonusTier } from "@/lib/bonuses";
 import type { Charge, CommissionRate, Seller, Supplier, SupplierInvoice, SupplierPayment } from "@/lib/types";
 
 interface Prod { id: string; name: string; category: string | null; vat_rate: number }
@@ -35,6 +36,7 @@ export default function RapportAnnuelPage() {
   const [sales, setSales] = useState<Sale[]>([]);
   const [charges, setCharges] = useState<Charge[]>([]);
   const [rates, setRates] = useState<CommissionRate[]>([]);
+  const [tiers, setTiers] = useState<BonusTier[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [invoices, setInvoices] = useState<SupplierInvoice[]>([]);
   const [payments, setPayments] = useState<SupplierPayment[]>([]);
@@ -58,6 +60,8 @@ export default function RapportAnnuelPage() {
       setCharges(ch);
       const { data: rateRows } = await supabase.from("commission_rates").select("category,rate");
       setRates((rateRows as CommissionRate[]) ?? []);
+      const { data: tierRows } = await supabase.from("seller_bonus_tiers").select("*");
+      setTiers((tierRows as BonusTier[]) ?? []);
       setSuppliers(sup);
       setInvoices(inv);
       setPayments(pay);
@@ -114,15 +118,16 @@ export default function RapportAnnuelPage() {
         qty += s.quantity;
       }
       const oneOff = charges.filter((c) => c.active && c.month === key).reduce((s, c) => s + Number(c.amount), 0);
-      // charges = fixes/ponctuelles + commissions vendeurs (HT × taux catégorie)
+      // charges = fixes/ponctuelles + commissions vendeurs (HT × taux catégorie) + primes sur CA
       const commission = totalCommission(monthSales, sellers, (id) => products[id]?.category, rm);
-      const ch = oneOff + (chargedMonths.has(key) ? recurring : 0) + commission;
+      const bonus = totalBonuses(monthSales, tiers.filter((x) => x.month === key));
+      const ch = oneOff + (chargedMonths.has(key) ? recurring : 0) + commission + bonus;
       const purchases = invoices.filter((i) => i.inv_date.startsWith(key)).reduce((s, i) => s + Number(i.amount), 0);
       const paid = payments.filter((p) => p.pay_date.startsWith(key)).reduce((s, p) => s + Number(p.amount), 0);
       return { key, ca, profit, qty, charges: ch, net: profit - ch, purchases, paid };
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sales, charges, rates, sellers, invoices, payments, products, year, chargedMonths]);
+  }, [sales, charges, rates, tiers, sellers, invoices, payments, products, year, chargedMonths]);
 
   const tot = useMemo(() => {
     const sum = (k: "ca" | "profit" | "qty" | "charges" | "net" | "purchases" | "paid") =>

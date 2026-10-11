@@ -69,6 +69,8 @@ export interface CommissionRate {
   rate: number; // % appliqué au CA HT des vendeurs retail
 }
 
+export type { BonusTier } from "@/lib/bonuses";
+
 export interface SupplierInvoice {
   id: string;
   supplier_id: string;

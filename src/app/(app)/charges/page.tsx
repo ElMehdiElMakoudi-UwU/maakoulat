@@ -6,6 +6,7 @@ import { useI18n } from "@/lib/i18n";
 import { currentMonth, fmtMoney, fmtNum, monthLabel, monthRange } from "@/lib/format";
 import { fetchAll } from "@/lib/demandData";
 import { catKey, commissionsBySeller, rateMap } from "@/lib/commissions";
+import { bonusFor, caHtBySeller, type BonusTier } from "@/lib/bonuses";
 import type { Charge, CommissionRate, Seller } from "@/lib/types";
 
 interface SaleRow { seller_id: string; product_id: string; quantity: number; sale_price: number }
@@ -21,6 +22,7 @@ export default function ChargesPage() {
   const [sales, setSales] = useState<SaleRow[]>([]);
   const [rates, setRates] = useState<CommissionRate[]>([]);
   const [ratesMissing, setRatesMissing] = useState(false);
+  const [tiers, setTiers] = useState<BonusTier[]>([]);
   const [form, setForm] = useState({ label: "", amount: "", type: "recurring" as "recurring" | "one_off" });
 
   async function reload() {
@@ -35,7 +37,7 @@ export default function ChargesPage() {
 
     // Commissions : ventes du mois + catégories produits + taux
     const { start, end } = monthRange(month);
-    const [selRes, prodRes, rateRes, saleRows] = await Promise.all([
+    const [selRes, prodRes, rateRes, saleRows, tierRes] = await Promise.all([
       supabase.from("sellers").select("*").order("sort_order"),
       fetchAll<{ id: string; category: string | null }>((a, b) =>
         supabase.from("products").select("id,category").order("id").range(a, b)),
@@ -43,7 +45,9 @@ export default function ChargesPage() {
       fetchAll<SaleRow>((a, b) =>
         supabase.from("sales").select("seller_id,product_id,quantity,sale_price")
           .gte("sale_date", start).lt("sale_date", end).order("id").range(a, b)),
+      supabase.from("seller_bonus_tiers").select("*").eq("month", month),
     ]);
+    setTiers((tierRes.data as BonusTier[]) ?? []);
     setSellers((selRes.data as Seller[]) ?? []);
     setProductCat(Object.fromEntries(prodRes.map((p) => [p.id, p.category])));
     setRatesMissing(!!rateRes.error);
@@ -63,7 +67,19 @@ export default function ChargesPage() {
     [sales, sellers, productCat, rates]
   );
   const commissionTotal = commissions.reduce((s, c) => s + c.commission, 0);
-  const total = fixedTotal + commissionTotal;
+  // Primes sur CA : plus haut palier atteint par vendeur (CA HT du mois)
+  const bonuses = useMemo(() => {
+    const ca = caHtBySeller(sales);
+    return sellers
+      .filter((s) => tiers.some((x) => x.seller_id === s.id))
+      .map((s) => {
+        const ht = ca.get(s.id) ?? 0;
+        const r = bonusFor(ht, tiers.filter((x) => x.seller_id === s.id));
+        return { seller_id: s.id, ca: ht, threshold: r.reached ? Number(r.reached.threshold) : 0, bonus: r.bonus };
+      });
+  }, [sales, sellers, tiers]);
+  const bonusTotal = bonuses.reduce((s, b) => s + b.bonus, 0);
+  const total = fixedTotal + commissionTotal + bonusTotal;
   const sellerName = (id: string) => sellers.find((s) => s.id === id)?.name ?? "—";
 
   // Toutes les catégories du catalogue (dédoublonnées sans casse), avec leur taux
@@ -281,6 +297,43 @@ export default function ChargesPage() {
             </tbody>
           </table>
         </div>
+      </div>
+
+      {/* Primes sur CA (calculées) */}
+      <h2 className="mb-2 mt-6 font-bold">{t("bonuses")}</h2>
+      <div className="card overflow-hidden">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-border text-muted">
+              <th className="px-4 py-2 text-start font-medium">{t("seller")}</th>
+              <th className="px-4 py-2 text-end font-medium">{t("ca_ht_month")}</th>
+              <th className="px-4 py-2 text-end font-medium">{t("tier_reached")}</th>
+              <th className="px-4 py-2 text-end font-medium">{t("bonus")}</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border">
+            {bonuses.map((b) => (
+              <tr key={b.seller_id}>
+                <td className="px-4 py-2 font-medium">
+                  {sellerName(b.seller_id)}{" "}
+                  <span className="ms-1 rounded-full bg-accent/15 px-2 py-0.5 text-xs font-medium text-accent">{t("auto_short")}</span>
+                </td>
+                <td className="px-4 py-2 text-end">{fmtMoney(b.ca, lang)}</td>
+                <td className="px-4 py-2 text-end">{b.threshold ? fmtMoney(b.threshold, lang) : t("no_tier_reached")}</td>
+                <td className="px-4 py-2 text-end">{fmtMoney(b.bonus, lang)}</td>
+              </tr>
+            ))}
+            {bonuses.length === 0 && (
+              <tr><td colSpan={4} className="p-6 text-center text-muted">{t("no_tiers")}</td></tr>
+            )}
+          </tbody>
+          <tfoot>
+            <tr className="border-t-2 border-border bg-background font-bold">
+              <td className="px-4 py-2.5" colSpan={3}>{t("total")}</td>
+              <td className="px-4 py-2.5 text-end">{fmtMoney(bonusTotal, lang)}</td>
+            </tr>
+          </tfoot>
+        </table>
       </div>
     </div>
   );
