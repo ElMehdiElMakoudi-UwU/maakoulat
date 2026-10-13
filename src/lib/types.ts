@@ -4,6 +4,7 @@ export interface Seller {
   id: string;
   name: string;
   kind: SellerKind;
+  base_salary?: number; // salaire de base mensuel (migration_payroll.sql)
   active: boolean;
   sort_order: number;
 }
@@ -70,6 +71,13 @@ export interface Charge {
   active: boolean;
   sort_order: number;
 }
+
+export interface CommissionRate {
+  category: string;
+  rate: number; // % appliqué au CA HT des vendeurs retail
+}
+
+export type { BonusTier } from "@/lib/bonuses";
 
 export interface SupplierInvoice {
   id: string;

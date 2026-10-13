@@ -7,6 +7,9 @@ import { useI18n } from "@/lib/i18n";
 import { currentMonth, fmtMoney, fmtNum, fmtPct, monthLabel, monthRange, today, ttc } from "@/lib/format";
 import type { Product, Seller, Supplier, SupplierInvoice, SupplierPayment } from "@/lib/types";
 import { allocateInvoices, dueSummary } from "@/lib/supplierDues";
+import { rateMap, totalCommission } from "@/lib/commissions";
+import { totalBonuses, type BonusTier } from "@/lib/bonuses";
+import type { CommissionRate } from "@/lib/types";
 
 interface SaleRow {
   product_id: string;
@@ -25,6 +28,8 @@ export default function DashboardPage() {
   const [sales, setSales] = useState<SaleRow[]>([]);
   const [payments, setPayments] = useState<number>(0);
   const [charges, setCharges] = useState<number>(0);
+  const [rates, setRates] = useState<CommissionRate[]>([]);
+  const [tiers, setTiers] = useState<BonusTier[]>([]);
   const [caTarget, setCaTarget] = useState(0);
   const [profitTarget, setProfitTarget] = useState(0);
   const [editTargets, setEditTargets] = useState(false);
@@ -58,7 +63,7 @@ export default function DashboardPage() {
     setLoading(true);
     const { start, end } = monthRange(month);
     (async () => {
-      const [sellersRes, prodRes, salesRes, payRes, chargeRes, setRes] = await Promise.all([
+      const [sellersRes, prodRes, salesRes, payRes, chargeRes, setRes, rateRes, tierRes] = await Promise.all([
         supabase.from("sellers").select("*").order("sort_order"),
         supabase.from("products").select("id,name,category,vat_rate"),
         supabase
@@ -69,7 +74,11 @@ export default function DashboardPage() {
         supabase.from("supplier_payments").select("amount").gte("pay_date", start).lt("pay_date", end),
         supabase.from("charges").select("amount,month,active"),
         supabase.from("monthly_settings").select("*").eq("month", month).maybeSingle(),
+        supabase.from("commission_rates").select("category,rate"),
+        supabase.from("seller_bonus_tiers").select("*").eq("month", month),
       ]);
+      setTiers((tierRes.data as BonusTier[]) ?? []);
+      setRates((rateRes.data as CommissionRate[]) ?? []);
       const settings = setRes.data as { ca_target: number; profit_target: number } | null;
       setCaTarget(settings ? Number(settings.ca_target) : 0);
       setProfitTarget(settings ? Number(settings.profit_target) : 0);
@@ -112,7 +121,12 @@ export default function DashboardPage() {
     return { ca, profit, margin: ca ? profit / ca : 0 };
   }, [perSeller]);
 
-  const netResult = totals.profit - charges;
+  const commissions = useMemo(
+    () => totalCommission(sales, sellers, (id) => products[id]?.category, rateMap(rates)),
+    [sales, sellers, products, rates]
+  );
+  const bonuses = useMemo(() => totalBonuses(sales, tiers), [sales, tiers]);
+  const netResult = totals.profit - charges - commissions - bonuses;
 
   async function saveTargets() {
     const ca = parseFloat(caTargetInput) || 0;
@@ -264,7 +278,9 @@ export default function DashboardPage() {
               <h2 className="mb-3 font-bold">{t("net_result")}</h2>
               <Line label={t("gross_profit")} value={fmtMoney(totals.profit, lang)} positive />
               <Line label={t("suppliers_paid")} value={fmtMoney(payments, lang)} muted />
-              <Line label={t("total_charges")} value={`− ${fmtMoney(charges, lang)}`} />
+              <Line label={t("fixed_charges")} value={`− ${fmtMoney(charges, lang)}`} />
+              <Line label={t("commissions")} value={`− ${fmtMoney(commissions, lang)}`} />
+              <Line label={t("bonuses")} value={`− ${fmtMoney(bonuses, lang)}`} />
               <div className="mt-3 flex items-center justify-between border-t border-border pt-3">
                 <span className="font-bold">{t("net_result")}</span>
                 <span className={`text-xl font-bold ${netResult >= 0 ? "text-success" : "text-danger"}`}>
@@ -272,7 +288,7 @@ export default function DashboardPage() {
                 </span>
               </div>
               <p className="mt-2 text-xs text-muted">
-                {t("net_result")} = {t("gross_profit")} − {t("total_charges")}
+                {t("net_result")} = {t("gross_profit")} − {t("fixed_charges")} − {t("commissions")} − {t("bonuses")}
               </p>
             </div>
           </div>

@@ -1,10 +1,15 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/lib/i18n";
-import { currentMonth, fmtMoney, monthLabel } from "@/lib/format";
-import type { Charge } from "@/lib/types";
+import { currentMonth, fmtMoney, fmtNum, monthLabel, monthRange } from "@/lib/format";
+import { fetchAll } from "@/lib/demandData";
+import { catKey, commissionsBySeller, rateMap } from "@/lib/commissions";
+import { bonusFor, caHtBySeller, type BonusTier } from "@/lib/bonuses";
+import type { Charge, CommissionRate, Seller } from "@/lib/types";
+
+interface SaleRow { seller_id: string; product_id: string; quantity: number; sale_price: number }
 
 export default function ChargesPage() {
   const { t, lang } = useI18n();
@@ -12,6 +17,12 @@ export default function ChargesPage() {
   const [month, setMonth] = useState(currentMonth());
   const [charges, setCharges] = useState<Charge[]>([]);
   const [loading, setLoading] = useState(true);
+  const [sellers, setSellers] = useState<Seller[]>([]);
+  const [productCat, setProductCat] = useState<Record<string, string | null>>({});
+  const [sales, setSales] = useState<SaleRow[]>([]);
+  const [rates, setRates] = useState<CommissionRate[]>([]);
+  const [ratesMissing, setRatesMissing] = useState(false);
+  const [tiers, setTiers] = useState<BonusTier[]>([]);
   const [form, setForm] = useState({ label: "", amount: "", type: "recurring" as "recurring" | "one_off" });
 
   async function reload() {
@@ -23,6 +34,25 @@ export default function ChargesPage() {
       .or(`month.is.null,month.eq.${month}`)
       .order("sort_order");
     setCharges((data as Charge[]) ?? []);
+
+    // Commissions : ventes du mois + catégories produits + taux
+    const { start, end } = monthRange(month);
+    const [selRes, prodRes, rateRes, saleRows, tierRes] = await Promise.all([
+      supabase.from("sellers").select("*").order("sort_order"),
+      fetchAll<{ id: string; category: string | null }>((a, b) =>
+        supabase.from("products").select("id,category").order("id").range(a, b)),
+      supabase.from("commission_rates").select("category,rate"),
+      fetchAll<SaleRow>((a, b) =>
+        supabase.from("sales").select("seller_id,product_id,quantity,sale_price")
+          .gte("sale_date", start).lt("sale_date", end).order("id").range(a, b)),
+      supabase.from("seller_bonus_tiers").select("*").eq("month", month),
+    ]);
+    setTiers((tierRes.data as BonusTier[]) ?? []);
+    setSellers((selRes.data as Seller[]) ?? []);
+    setProductCat(Object.fromEntries(prodRes.map((p) => [p.id, p.category])));
+    setRatesMissing(!!rateRes.error);
+    setRates((rateRes.data as CommissionRate[]) ?? []);
+    setSales(saleRows);
     setLoading(false);
   }
   useEffect(() => {
@@ -30,7 +60,49 @@ export default function ChargesPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [month]);
 
-  const total = charges.filter((c) => c.active).reduce((s, c) => s + Number(c.amount), 0);
+  const fixedTotal = charges.filter((c) => c.active).reduce((s, c) => s + Number(c.amount), 0);
+
+  const commissions = useMemo(
+    () => commissionsBySeller(sales, sellers, (id) => productCat[id], rateMap(rates)),
+    [sales, sellers, productCat, rates]
+  );
+  const commissionTotal = commissions.reduce((s, c) => s + c.commission, 0);
+  // Primes sur CA : plus haut palier atteint par vendeur (CA HT du mois)
+  const bonuses = useMemo(() => {
+    const ca = caHtBySeller(sales);
+    return sellers
+      .filter((s) => tiers.some((x) => x.seller_id === s.id))
+      .map((s) => {
+        const ht = ca.get(s.id) ?? 0;
+        const r = bonusFor(ht, tiers.filter((x) => x.seller_id === s.id));
+        return { seller_id: s.id, ca: ht, threshold: r.reached ? Number(r.reached.threshold) : 0, bonus: r.bonus };
+      });
+  }, [sales, sellers, tiers]);
+  const bonusTotal = bonuses.reduce((s, b) => s + b.bonus, 0);
+  const total = fixedTotal + commissionTotal + bonusTotal;
+  const sellerName = (id: string) => sellers.find((s) => s.id === id)?.name ?? "—";
+
+  // Toutes les catégories du catalogue (dédoublonnées sans casse), avec leur taux
+  const categories = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const c of Object.values(productCat)) {
+      const label = (c ?? "").trim();
+      if (label && !map.has(catKey(label))) map.set(catKey(label), label);
+    }
+    for (const r of rates) if (!map.has(catKey(r.category))) map.set(catKey(r.category), r.category.trim());
+    const rm = rateMap(rates);
+    return [...map.entries()]
+      .map(([key, label]) => ({ key, label, rate: rm.get(key) ?? 0 }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [productCat, rates]);
+
+  async function saveRate(label: string, value: string) {
+    const rate = Math.min(100, Math.max(0, parseFloat(value) || 0));
+    const existing = rates.find((r) => catKey(r.category) === catKey(label));
+    const category = existing?.category ?? label;
+    setRates((old) => [...old.filter((r) => catKey(r.category) !== catKey(label)), { category, rate }]);
+    await supabase.from("commission_rates").upsert({ category, rate, updated_at: new Date().toISOString() });
+  }
 
   async function updateField(c: Charge, field: "label" | "amount", value: string) {
     const patch = field === "amount" ? { amount: parseFloat(value) || 0 } : { label: value };
@@ -91,6 +163,7 @@ export default function ChargesPage() {
         </button>
       </div>
 
+      <h2 className="mb-2 font-bold">{t("fixed_charges")}</h2>
       <div className="card overflow-hidden">
         {loading ? (
           <p className="p-8 text-center text-muted">{t("loading")}</p>
@@ -137,12 +210,130 @@ export default function ChargesPage() {
             <tfoot>
               <tr className="border-t-2 border-border bg-background font-bold">
                 <td className="px-4 py-2.5" colSpan={2}>{t("total")}</td>
-                <td className="px-4 py-2.5 text-end">{fmtMoney(total, lang)}</td>
+                <td className="px-4 py-2.5 text-end">{fmtMoney(fixedTotal, lang)}</td>
                 <td></td>
               </tr>
             </tfoot>
           </table>
         )}
+      </div>
+
+      {/* Commissions vendeurs (calculées) */}
+      <div className="mb-2 mt-6 flex flex-wrap items-baseline justify-between gap-2">
+        <h2 className="font-bold">{t("commissions")}</h2>
+        <p className="text-xs text-muted">{t("commissions_hint")}</p>
+      </div>
+      {ratesMissing && (
+        <p className="mb-3 rounded-lg border border-danger/40 bg-danger/10 p-3 text-sm text-danger">
+          Table <code>commission_rates</code> introuvable — exécutez <code>supabase/migration_commissions.sql</code> dans Supabase.
+        </p>
+      )}
+      <div className="grid gap-4 lg:grid-cols-3">
+        <div className="card overflow-hidden lg:col-span-2">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border text-muted">
+                <th className="px-4 py-2 text-start font-medium">{t("seller")}</th>
+                <th className="px-4 py-2 text-start font-medium">{t("category")}</th>
+                <th className="px-4 py-2 text-end font-medium">{t("commission_base")}</th>
+                <th className="px-4 py-2 text-end font-medium">{t("commission_rate")}</th>
+                <th className="px-4 py-2 text-end font-medium">{t("commission")}</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {commissions.map((c) => (
+                <Fragment key={c.seller_id}>
+                  {c.byCategory.map((b, i) => (
+                    <tr key={`${c.seller_id}-${b.category}`}>
+                      <td className="px-4 py-2 font-medium">{i === 0 ? sellerName(c.seller_id) : ""}</td>
+                      <td className="px-4 py-2" dir="auto">{b.category || t("no_category")}</td>
+                      <td className="px-4 py-2 text-end">{fmtMoney(b.base, lang)}</td>
+                      <td className="px-4 py-2 text-end">{fmtNum(b.rate, lang)} %</td>
+                      <td className="px-4 py-2 text-end">{fmtMoney(b.commission, lang)}</td>
+                    </tr>
+                  ))}
+                  <tr className="bg-background">
+                    <td className="px-4 py-2 font-semibold" colSpan={2}>
+                      {sellerName(c.seller_id)}{" "}
+                      <span className="ms-1 rounded-full bg-accent/15 px-2 py-0.5 text-xs font-medium text-accent">{t("auto_short")}</span>
+                    </td>
+                    <td className="px-4 py-2 text-end font-semibold">{fmtMoney(c.base, lang)}</td>
+                    <td></td>
+                    <td className="px-4 py-2 text-end font-semibold">{fmtMoney(c.commission, lang)}</td>
+                  </tr>
+                </Fragment>
+              ))}
+              {commissions.length === 0 && (
+                <tr><td colSpan={5} className="p-6 text-center text-muted">{t("no_data")}</td></tr>
+              )}
+            </tbody>
+            <tfoot>
+              <tr className="border-t-2 border-border bg-background font-bold">
+                <td className="px-4 py-2.5" colSpan={4}>{t("total")}</td>
+                <td className="px-4 py-2.5 text-end">{fmtMoney(commissionTotal, lang)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+
+        <div className="card overflow-hidden">
+          <h3 className="border-b border-border px-4 py-2.5 text-sm font-semibold">{t("commission_rates")}</h3>
+          <table className="w-full text-sm">
+            <tbody className="divide-y divide-border">
+              {categories.map((c) => (
+                <tr key={c.key}>
+                  <td className="px-4 py-1.5" dir="auto">{c.label}</td>
+                  <td className="px-4 py-1.5 text-end">
+                    <input type="number" min={0} max={100} step={0.5} defaultValue={c.rate || ""} placeholder="0"
+                      disabled={ratesMissing}
+                      onBlur={(e) => { if ((parseFloat(e.target.value) || 0) !== c.rate) saveRate(c.label, e.target.value); }}
+                      className="w-20 rounded border border-border bg-transparent px-2 py-1 text-end focus:border-primary focus:outline-none" /> %
+                  </td>
+                </tr>
+              ))}
+              {categories.length === 0 && (
+                <tr><td colSpan={2} className="p-4 text-center text-muted">{t("no_data")}</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Primes sur CA (calculées) */}
+      <h2 className="mb-2 mt-6 font-bold">{t("bonuses")}</h2>
+      <div className="card overflow-hidden">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-border text-muted">
+              <th className="px-4 py-2 text-start font-medium">{t("seller")}</th>
+              <th className="px-4 py-2 text-end font-medium">{t("ca_ht_month")}</th>
+              <th className="px-4 py-2 text-end font-medium">{t("tier_reached")}</th>
+              <th className="px-4 py-2 text-end font-medium">{t("bonus")}</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border">
+            {bonuses.map((b) => (
+              <tr key={b.seller_id}>
+                <td className="px-4 py-2 font-medium">
+                  {sellerName(b.seller_id)}{" "}
+                  <span className="ms-1 rounded-full bg-accent/15 px-2 py-0.5 text-xs font-medium text-accent">{t("auto_short")}</span>
+                </td>
+                <td className="px-4 py-2 text-end">{fmtMoney(b.ca, lang)}</td>
+                <td className="px-4 py-2 text-end">{b.threshold ? fmtMoney(b.threshold, lang) : t("no_tier_reached")}</td>
+                <td className="px-4 py-2 text-end">{fmtMoney(b.bonus, lang)}</td>
+              </tr>
+            ))}
+            {bonuses.length === 0 && (
+              <tr><td colSpan={4} className="p-6 text-center text-muted">{t("no_tiers")}</td></tr>
+            )}
+          </tbody>
+          <tfoot>
+            <tr className="border-t-2 border-border bg-background font-bold">
+              <td className="px-4 py-2.5" colSpan={3}>{t("total")}</td>
+              <td className="px-4 py-2.5 text-end">{fmtMoney(bonusTotal, lang)}</td>
+            </tr>
+          </tfoot>
+        </table>
       </div>
     </div>
   );

@@ -12,7 +12,8 @@ import { addDays, allocateInvoices } from "@/lib/supplierDues";
 import {
   buildForecast, forecastLows, groupByWeek, weekdayAverages, type ForecastOutflow,
 } from "@/lib/treasuryForecast";
-import type { BankStatement, Supplier, SupplierInvoice, SupplierPayment } from "@/lib/types";
+import { rateMap, totalCommission } from "@/lib/commissions";
+import type { BankStatement, CommissionRate, Seller, Supplier, SupplierInvoice, SupplierPayment } from "@/lib/types";
 
 const HISTORY_DAYS = 56; // 8 semaines d'historique pour la moyenne des ventes
 const HORIZONS = [30, 60, 90] as const;
@@ -20,10 +21,13 @@ const HORIZONS = [30, 60, 90] as const;
 type ChargeRow = { amount: number; month: string | null; active: boolean };
 type SaleRow = {
   sale_date: string;
+  seller_id: string;
+  product_id: string;
   quantity: number;
   sale_price: number;
-  products: { vat_rate: number } | { vat_rate: number }[] | null;
+  products: { vat_rate: number; category: string | null } | { vat_rate: number; category: string | null }[] | null;
 };
+const prodOf = (s: SaleRow) => (Array.isArray(s.products) ? s.products[0] : s.products);
 
 const shortDate = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}`;
 
@@ -42,6 +46,7 @@ export default function TreasuryForecast() {
   const [weekdayAvg, setWeekdayAvg] = useState<number[]>([0, 0, 0, 0, 0, 0, 0]);
   const [supplierOutflows, setSupplierOutflows] = useState<ForecastOutflow[]>([]);
   const [charges, setCharges] = useState<ChargeRow[]>([]);
+  const [commissionPerDay, setCommissionPerDay] = useState(0);
   const [lastStatement, setLastStatement] = useState<BankStatement | null>(null);
 
   useEffect(() => {
@@ -50,8 +55,8 @@ export default function TreasuryForecast() {
     const histFrom = addDays(todayStr, -HISTORY_DAYS);
     const salesFrom = histFrom < start ? histFrom : start;
     (async () => {
-      const [salesRes, supRes, invRes, payRes, chargeRes, setRes, bankRes] = await Promise.all([
-        supabase.from("sales").select("sale_date,quantity,sale_price,products(vat_rate)")
+      const [salesRes, supRes, invRes, payRes, chargeRes, setRes, bankRes, sellerRes, rateRes] = await Promise.all([
+        supabase.from("sales").select("sale_date,seller_id,product_id,quantity,sale_price,products(vat_rate,category)")
           .gte("sale_date", salesFrom).lte("sale_date", todayStr),
         supabase.from("suppliers").select("*"),
         supabase.from("supplier_invoices").select("*"),
@@ -59,12 +64,15 @@ export default function TreasuryForecast() {
         supabase.from("charges").select("amount,month,active"),
         supabase.from("monthly_settings").select("opening_balance").eq("month", month).maybeSingle(),
         supabase.from("bank_statements").select("*").order("period_end", { ascending: false, nullsFirst: false }).limit(1),
+        supabase.from("sellers").select("id,kind"),
+        supabase.from("commission_rates").select("category,rate"),
       ]);
+      const saleRows = (salesRes.data as SaleRow[]) ?? [];
 
       // Ventes TTC par date
       const salesByDate: Record<string, number> = {};
-      for (const s of (salesRes.data as SaleRow[]) ?? []) {
-        const vat = (Array.isArray(s.products) ? s.products[0] : s.products)?.vat_rate ?? 0;
+      for (const s of saleRows) {
+        const vat = prodOf(s)?.vat_rate ?? 0;
         salesByDate[s.sale_date] = (salesByDate[s.sale_date] ?? 0) + s.quantity * ttc(s.sale_price, vat);
       }
       // Moyenne sur les 8 dernières semaines complètes (aujourd'hui exclu : journée en cours)
@@ -83,9 +91,21 @@ export default function TreasuryForecast() {
       const chargesMonth = chargeRows
         .filter((c) => c.active && (c.month === month || c.month === null))
         .reduce((s, c) => s + Number(c.amount), 0);
+      // Commissions vendeurs : du mois en cours (déjà dues) + moyenne journalière pour les mois à venir
+      const sellerRows = (sellerRes.data as Pick<Seller, "id" | "kind">[]) ?? [];
+      const rm = rateMap((rateRes.data as CommissionRate[]) ?? []);
+      const catOf = new Map(saleRows.map((s) => [s.product_id, prodOf(s)?.category]));
+      const commissionOf = (rows: SaleRow[]) => totalCommission(rows, sellerRows, (id) => catOf.get(id), rm);
+      const commissionMtd = commissionOf(saleRows.filter((s) => s.sale_date >= start && s.sale_date <= todayStr));
+      const yesterday = addDays(todayStr, -1);
+      setCommissionPerDay(
+        commissionOf(saleRows.filter((s) => s.sale_date >= histFrom && s.sale_date <= yesterday)) / HISTORY_DAYS
+      );
       const settings = setRes.data as { opening_balance: number } | null;
       setOpeningSet(!!settings && Number(settings.opening_balance) !== 0);
-      setComputedBalance((settings ? Number(settings.opening_balance) : 0) + salesMtd - payMtd - chargesMonth);
+      setComputedBalance(
+        (settings ? Number(settings.opening_balance) : 0) + salesMtd - payMtd - chargesMonth - commissionMtd
+      );
 
       // Échéances fournisseurs : reste à payer de chaque facture non soldée
       const names = new Map(suppliers.map((s) => [s.id, s.name]));
@@ -105,8 +125,9 @@ export default function TreasuryForecast() {
     })();
   }, [supabase, todayStr]);
 
-  // Charges des mois à venir, imputées le 1er de chaque mois de l'horizon
+  // Charges des mois à venir (fixes + commissions estimées), imputées le 1er de chaque mois de l'horizon
   const outflows = useMemo<ForecastOutflow[]>(() => {
+    const factor = Math.max(0, parseFloat(salesPct) || 0) / 100;
     const end = addDays(todayStr, horizon);
     const rows: ForecastOutflow[] = [...supplierOutflows];
     let [y, m] = todayStr.split("-").map(Number);
@@ -116,13 +137,16 @@ export default function TreasuryForecast() {
       const month = `${y}-${String(m).padStart(2, "0")}`;
       const date = `${month}-01`;
       if (date > end) break;
-      const amount = charges
-        .filter((c) => c.active && (c.month === month || c.month === null))
-        .reduce((s, c) => s + Number(c.amount), 0);
+      const daysInMonth = new Date(y, m, 0).getDate();
+      const amount =
+        charges
+          .filter((c) => c.active && (c.month === month || c.month === null))
+          .reduce((s, c) => s + Number(c.amount), 0) +
+        commissionPerDay * daysInMonth * factor;
       if (amount > 0) rows.push({ date, amount, kind: "charges", label: t("total_charges") });
     }
     return rows;
-  }, [supplierOutflows, charges, horizon, todayStr, t]);
+  }, [supplierOutflows, charges, commissionPerDay, salesPct, horizon, todayStr, t]);
 
   const startBalance =
     balanceOverride !== null && balanceOverride.trim() !== ""
