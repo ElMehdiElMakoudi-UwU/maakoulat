@@ -55,6 +55,7 @@ const NAV_GROUPS: NavGroup[] = [
     icon: "🗂️",
     items: [
       { href: "/produits", key: "nav_products", icon: "📦" },
+      { href: "/inventaire", key: "nav_inventory", icon: "🗃️" },
       { href: "/fournisseurs", key: "nav_suppliers", icon: "🚚" },
       { href: "/clients", key: "nav_clients", icon: "👥" },
     ],

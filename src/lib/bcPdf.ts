@@ -44,7 +44,11 @@ export async function fetchLogoDataUrl(): Promise<string | null> {
 }
 
 /** Construit le PDF du bon de commande (mise en page reprise du modèle Excel). */
-export function buildBcPdf(data: BcPdfData, logoDataUrl: string | null): jsPDF {
+export function buildBcPdf(
+  data: BcPdfData,
+  logoDataUrl: string | null,
+  company: typeof COMPANY = COMPANY
+): jsPDF {
   const doc = new jsPDF({ unit: "mm", format: "a4" });
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
@@ -55,7 +59,7 @@ export function buildBcPdf(data: BcPdfData, logoDataUrl: string | null): jsPDF {
   doc.setFont("helvetica", "bold");
   doc.setFontSize(14);
   doc.setTextColor(...red);
-  doc.text(COMPANY.name, margin, 20);
+  doc.text(company.name, margin, 20);
 
   if (logoDataUrl) {
     try {
@@ -133,13 +137,13 @@ export function buildBcPdf(data: BcPdfData, logoDataUrl: string | null): jsPDF {
   doc.setDrawColor(220, 220, 220);
   doc.line(margin, pageH - 20, pageW - margin, pageH - 20);
   doc.text(
-    `Adresse : ${COMPANY.address}  .  Tél : ${COMPANY.tel}  .  Email : ${COMPANY.email}`,
+    `Adresse : ${company.address}  .  Tél : ${company.tel}  .  Email : ${company.email}`,
     pageW / 2,
     pageH - 15,
     { align: "center" }
   );
   doc.text(
-    `RC : ${COMPANY.rc}  .  Patente : ${COMPANY.patente}  .  IF : ${COMPANY.if}  .  ICE : ${COMPANY.ice}`,
+    `RC : ${company.rc}  .  Patente : ${company.patente}  .  IF : ${company.if}  .  ICE : ${company.ice}`,
     pageW / 2,
     pageH - 11,
     { align: "center" }

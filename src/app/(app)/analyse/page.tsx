@@ -91,6 +91,41 @@ export default function AnalysePage() {
       .map(([day, v]) => ({ day: String(day), ...v }));
   }, [inMonth, products]);
 
+  // A bis) CA par vendeur et par jour (mois sélectionné)
+  const sellerDaily = useMemo(() => {
+    const map = new Map<string, Map<string, number>>(); // date -> seller_id -> CA
+    for (const s of inMonth) {
+      const perSeller = map.get(s.sale_date) ?? new Map<string, number>();
+      const c = s.quantity * ttc(s.sale_price, products[s.product_id]?.vat_rate ?? 0);
+      perSeller.set(s.seller_id, (perSeller.get(s.seller_id) ?? 0) + c);
+      map.set(s.sale_date, perSeller);
+    }
+    const dates = Array.from(map.keys()).sort();
+    const rows = dates.map((date) => {
+      const perSeller = map.get(date)!;
+      let total = 0;
+      for (const v of perSeller.values()) total += v;
+      return { date, perSeller, total };
+    });
+    const sellerTotals = new Map<string, number>();
+    for (const r of rows)
+      for (const [id, v] of r.perSeller) sellerTotals.set(id, (sellerTotals.get(id) ?? 0) + v);
+    const grandTotal = rows.reduce((a, r) => a + r.total, 0);
+    const chart = rows.map((r) => {
+      const row: Record<string, number | string> = { day: String(Number(r.date.slice(8, 10))) };
+      for (const sel of sellers) row[sel.name] = Math.round(r.perSeller.get(sel.id) ?? 0);
+      return row;
+    });
+    // Seuls les vendeurs ayant vendu ce mois apparaissent en colonnes
+    const activeSellers = sellers.filter((s) => sellerTotals.has(s.id));
+    return { rows, sellerTotals, grandTotal, chart, activeSellers };
+  }, [inMonth, products, sellers]);
+
+  const fmtDay = (d: string) =>
+    new Intl.DateTimeFormat(lang === "ar" ? "ar-MA" : "fr-FR", { weekday: "short", day: "numeric" }).format(
+      new Date(d + "T00:00:00")
+    );
+
   // B) Comparaison mensuelle (CA + bénéfice) + par vendeur (CA)
   const monthly = useMemo(() => {
     return months.map((mo) => {
@@ -175,6 +210,68 @@ export default function AnalysePage() {
                 <Line isAnimationActive={false} type="monotone" dataKey="profit" name={t("profit")} stroke={SERIES.profit} strokeWidth={2} dot={{ r: 3 }} />
               </LineChart>
             </ResponsiveContainer>
+          </ChartCard>
+
+          {/* A bis) CA par vendeur et par jour */}
+          <ChartCard title={t("seller_daily")} hint={t("seller_daily_hint")}>
+            {sellerDaily.rows.length === 0 ? (
+              <p className="p-6 text-center text-muted">{t("no_data")}</p>
+            ) : (
+              <>
+                <ResponsiveContainer width="100%" height={280}>
+                  <BarChart data={sellerDaily.chart} margin={{ top: 8, right: 12, left: 4, bottom: 4 }}>
+                    <CartesianGrid stroke={INK.grid} vertical={false} />
+                    <XAxis dataKey="day" tick={{ fill: INK.secondary, fontSize: 12 }} tickLine={false} axisLine={{ stroke: INK.grid }} />
+                    <YAxis tick={{ fill: INK.secondary, fontSize: 12 }} tickLine={false} axisLine={false} width={64}
+                      tickFormatter={(v) => new Intl.NumberFormat("fr").format(v as number)} />
+                    <Tooltip content={<MoneyTooltip lang={lang} />} />
+                    <Legend />
+                    {sellers.map((s, i) => (
+                      <Bar isAnimationActive={false} key={s.id} dataKey={s.name} stackId="ca" fill={SELLER_HUES[i % SELLER_HUES.length]}
+                        radius={i === sellers.length - 1 ? [4, 4, 0, 0] : undefined} />
+                    ))}
+                  </BarChart>
+                </ResponsiveContainer>
+                <div className="mt-4 max-h-[420px] overflow-auto" dir={lang === "ar" ? "rtl" : "ltr"}>
+                  <table className="w-full min-w-[480px] text-sm">
+                    <thead className="sticky top-0 bg-surface">
+                      <tr className="border-b border-border text-muted">
+                        <th className="px-3 py-2 text-start font-medium">{t("date")}</th>
+                        {sellerDaily.activeSellers.map((s) => (
+                          <th key={s.id} className="px-3 py-2 text-end font-medium">{s.name}</th>
+                        ))}
+                        <th className="px-3 py-2 text-end font-medium">{t("total")}</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {sellerDaily.rows.map((r) => (
+                        <tr key={r.date} className="hover:bg-background">
+                          <td className="px-3 py-2 font-medium capitalize">{fmtDay(r.date)}</td>
+                          {sellerDaily.activeSellers.map((s) => {
+                            const v = r.perSeller.get(s.id);
+                            return (
+                              <td key={s.id} className={`px-3 py-2 text-end ${v ? "" : "text-muted"}`}>
+                                {v ? fmtMoney(v, lang) : "—"}
+                              </td>
+                            );
+                          })}
+                          <td className="px-3 py-2 text-end font-semibold">{fmtMoney(r.total, lang)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot className="sticky bottom-0 bg-surface">
+                      <tr className="border-t-2 border-border font-bold">
+                        <td className="px-3 py-2">{t("total")}</td>
+                        {sellerDaily.activeSellers.map((s) => (
+                          <td key={s.id} className="px-3 py-2 text-end">{fmtMoney(sellerDaily.sellerTotals.get(s.id) ?? 0, lang)}</td>
+                        ))}
+                        <td className="px-3 py-2 text-end">{fmtMoney(sellerDaily.grandTotal, lang)}</td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </>
+            )}
           </ChartCard>
 
           <div className="grid gap-5 lg:grid-cols-2">

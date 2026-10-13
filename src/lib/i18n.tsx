@@ -36,7 +36,91 @@ export const DICT: Dict = {
 
   // Paramètres / Sauvegarde
   settings_title: { fr: "Paramètres", ar: "الإعدادات" },
-  settings_hint: { fr: "Réglages généraux et sauvegarde des données.", ar: "الإعدادات العامة ونسخ البيانات احتياطيًا." },
+  settings_hint: { fr: "Coordonnées société, envoi des emails, factures et sauvegarde des données.", ar: "معلومات الشركة، إرسال البريد، الفواتير ونسخ البيانات احتياطيًا." },
+  set_save: { fr: "Enregistrer", ar: "حفظ" },
+  set_saving: { fr: "Enregistrement...", ar: "جاري الحفظ..." },
+  set_saved: { fr: "Enregistré ✓", ar: "تم الحفظ ✓" },
+  set_save_error: { fr: "Erreur lors de l'enregistrement.", ar: "خطأ أثناء الحفظ." },
+  set_reset_default: { fr: "Rétablir par défaut", ar: "استرجاع الافتراضي" },
+  set_migration_missing: {
+    fr: "Exécutez supabase/migration_settings.sql dans l'éditeur SQL de Supabase pour activer l'enregistrement du mot de passe.",
+    ar: "نفّذ الملف supabase/migration_settings.sql في محرر SQL الخاص بـ Supabase لتفعيل حفظ كلمة المرور.",
+  },
+
+  set_company_title: { fr: "Coordonnées de la société", ar: "معلومات الشركة" },
+  set_company_hint: {
+    fr: "Affichées sur les bons de commande, les factures et le PDF envoyé par email.",
+    ar: "تظهر في أوامر الشراء والفواتير وملف PDF المرسل بالبريد.",
+  },
+  co_name: { fr: "Raison sociale", ar: "اسم الشركة" },
+  co_address: { fr: "Adresse", ar: "العنوان" },
+  co_tel: { fr: "Téléphone", ar: "الهاتف" },
+  co_email: { fr: "Email (affiché)", ar: "البريد (المعروض)" },
+  co_rc: { fr: "RC", ar: "السجل التجاري (RC)" },
+  co_patente: { fr: "Patente", ar: "الباتانتا" },
+  co_if: { fr: "IF", ar: "التعريف الضريبي (IF)" },
+  co_ice: { fr: "ICE", ar: "ICE" },
+
+  set_email_title: { fr: "Envoi des emails (Gmail)", ar: "إرسال البريد (Gmail)" },
+  set_email_hint: {
+    fr: "Compte Gmail utilisé pour envoyer les bons de commande aux fournisseurs.",
+    ar: "حساب Gmail المستعمل لإرسال أوامر الشراء إلى الموردين.",
+  },
+  gmail_user: { fr: "Adresse Gmail d'envoi", ar: "عنوان Gmail للإرسال" },
+  gmail_from_name: { fr: "Nom de l'expéditeur", ar: "اسم المرسل" },
+  gmail_app_password: { fr: "Mot de passe d'application", ar: "كلمة مرور التطبيق" },
+  gmail_pw_set: { fr: "✓ Mot de passe enregistré", ar: "✓ كلمة المرور محفوظة" },
+  gmail_pw_not_set: { fr: "Aucun mot de passe enregistré", ar: "لا توجد كلمة مرور محفوظة" },
+  gmail_pw_keep: { fr: "Laisser vide pour conserver l'actuel", ar: "اتركه فارغًا للاحتفاظ بالحالية" },
+  gmail_pw_new: { fr: "16 caractères, ex. abcd efgh ijkl mnop", ar: "16 حرفًا، مثال abcd efgh ijkl mnop" },
+  gmail_pw_remove: { fr: "Supprimer le mot de passe", ar: "حذف كلمة المرور" },
+  gmail_pw_remove_confirm: { fr: "Supprimer le mot de passe d'application enregistré ?", ar: "حذف كلمة مرور التطبيق المحفوظة؟" },
+  gmail_show: { fr: "Afficher", ar: "إظهار" },
+  gmail_hide: { fr: "Masquer", ar: "إخفاء" },
+  gmail_status_settings: { fr: "Envoi actif — configuré ici", ar: "الإرسال مفعّل — مُعدّ هنا" },
+  gmail_status_env: {
+    fr: "Envoi actif — via les variables d'environnement du serveur (les valeurs saisies ici sont prioritaires)",
+    ar: "الإرسال مفعّل — عبر متغيرات بيئة الخادم (القيم المدخلة هنا لها الأولوية)",
+  },
+  gmail_status_off: { fr: "Envoi non configuré", ar: "الإرسال غير مُعدّ" },
+  gmail_help_title: { fr: "Comment obtenir un mot de passe d'application ?", ar: "كيف أحصل على كلمة مرور التطبيق؟" },
+  gmail_help_1: {
+    fr: "Connectez-vous au compte Gmail d'envoi et activez la validation en deux étapes (Compte Google → Sécurité).",
+    ar: "سجّل الدخول إلى حساب Gmail وفعّل التحقق بخطوتين (حساب Google ← الأمان).",
+  },
+  gmail_help_2: {
+    fr: "Ouvrez myaccount.google.com/apppasswords.",
+    ar: "افتح myaccount.google.com/apppasswords.",
+  },
+  gmail_help_3: {
+    fr: "Donnez un nom (ex. « Maakoulat ») puis cliquez sur Créer.",
+    ar: "أدخل اسمًا (مثلًا « Maakoulat ») ثم اضغط إنشاء.",
+  },
+  gmail_help_4: {
+    fr: "Copiez le code à 16 caractères ici, enregistrez, puis cliquez sur « Envoyer un email de test ».",
+    ar: "انسخ الرمز المكوّن من 16 حرفًا هنا، احفظ، ثم اضغط « إرسال بريد تجريبي ».",
+  },
+  test_email_btn: { fr: "Envoyer un email de test", ar: "إرسال بريد تجريبي" },
+  test_email_sending: { fr: "Envoi du test...", ar: "جاري إرسال التجربة..." },
+  test_email_ok: { fr: "Email de test envoyé à", ar: "تم إرسال البريد التجريبي إلى" },
+  test_email_auth_failed: {
+    fr: "Google a refusé la connexion : vérifiez l'adresse Gmail et le mot de passe d'application.",
+    ar: "رفض Google الاتصال: تحقق من عنوان Gmail وكلمة مرور التطبيق.",
+  },
+
+  set_bc_tpl_title: { fr: "Message d'envoi des bons de commande", ar: "رسالة إرسال أوامر الشراء" },
+  set_bc_tpl_hint: {
+    fr: "Variables disponibles : {numero} {date} {fournisseur} {societe} {tel}",
+    ar: "المتغيرات المتاحة: {numero} {date} {fournisseur} {societe} {tel}",
+  },
+  bc_tpl_subject: { fr: "Objet", ar: "الموضوع" },
+  bc_tpl_body: { fr: "Message", ar: "الرسالة" },
+
+  set_invoice_title: { fr: "Numérotation des factures", ar: "ترقيم الفواتير" },
+  set_invoice_hint: {
+    fr: "Prochain numéro attribué à la finalisation des factures (jamais inférieur au plus grand numéro existant + 1).",
+    ar: "الرقم التالي الذي يُمنح عند اعتماد الفواتير (لا يقل عن أكبر رقم موجود + 1).",
+  },
   backup_title: { fr: "Sauvegarde des données", ar: "نسخ البيانات احتياطيًا" },
   backup_hint: {
     fr: "Téléchargez une archive .zip contenant toutes les données de l'application (produits, ventes, fournisseurs, clients, factures, etc.) au format CSV.",
@@ -424,6 +508,8 @@ export const DICT: Dict = {
   monthly_comparison: { fr: "Comparaison mensuelle", ar: "المقارنة الشهرية" },
   monthly_comparison_hint: { fr: "6 derniers mois.", ar: "آخر 6 أشهر." },
   seller_comparison: { fr: "CA par vendeur et par mois", ar: "المداخيل حسب البائع والشهر" },
+  seller_daily: { fr: "CA par vendeur et par jour", ar: "المداخيل حسب البائع واليوم" },
+  seller_daily_hint: { fr: "CA TTC de chaque vendeur, jour par jour sur le mois.", ar: "مداخيل كل بائع يوما بيوم خلال الشهر." },
   margin_alerts: { fr: "Alertes marges", ar: "تنبيهات الهامش" },
   margin_alerts_hint: { fr: "Produits vendus ce mois avec une marge faible ou négative.", ar: "منتجات بيعت هذا الشهر بهامش ضعيف أو سلبي." },
   threshold: { fr: "Seuil", ar: "العتبة" },
@@ -882,6 +968,159 @@ export const DICT: Dict = {
   pa_ins_upsell: { fr: "« {name} » (même catégorie) rapporte plus : à proposer en alternative.", ar: "«{name}» (نفس الفئة) أكثر ربحًا: اقترحوه كبديل." },
   pa_ins_forecast_up: { fr: "Les 30 prochains jours devraient dépasser le mois dernier de {pct} %.", ar: "الـ30 يومًا القادمة يُتوقع أن تتجاوز الشهر الماضي بـ{pct}٪." },
   pa_ins_forecast_down: { fr: "Les 30 prochains jours devraient être {pct} % sous le mois dernier.", ar: "الـ30 يومًا القادمة يُتوقع أن تكون أقل من الشهر الماضي بـ{pct}٪." },
+
+  // Analyse par catégorie
+  ca_tab_products: { fr: "Produits", ar: "المنتجات" },
+  ca_tab_categories: { fr: "Catégories", ar: "الفئات" },
+  ca_no_category: { fr: "Sans catégorie", ar: "بدون فئة" },
+  ca_role: { fr: "Rôle", ar: "الدور" },
+  ca_role_pillar: { fr: "Pilier", ar: "ركيزة" },
+  ca_role_pillar_hint: { fr: "Gros contributeur au bénéfice, ventes stables ou en hausse.", ar: "مساهم كبير في الربح، مبيعات مستقرة أو في ارتفاع." },
+  ca_role_rising: { fr: "Relais", ar: "واعدة" },
+  ca_role_rising_hint: { fr: "Contribution modeste mais qui tient ou progresse : à développer.", ar: "مساهمة متواضعة لكنها مستقرة أو في تقدم: يجب تطويرها." },
+  ca_role_at_risk: { fr: "À surveiller", ar: "تحت المراقبة" },
+  ca_role_at_risk_hint: { fr: "Gros contributeur dont les ventes baissent : à traiter en priorité.", ar: "مساهم كبير مبيعاته تنخفض: يجب معالجته أولًا." },
+  ca_role_marginal: { fr: "En recul", ar: "في تراجع" },
+  ca_role_marginal_hint: { fr: "Faible contribution et ventes en baisse : réduire ou relancer.", ar: "مساهمة ضعيفة ومبيعات في انخفاض: تقليصها أو إعادة تحريكها." },
+  ca_action_plan: { fr: "Plan d'action", ar: "خطة العمل" },
+  ca_action_plan_hint: { fr: "Classé par urgence puis par gain estimé sur 30 jours.", ar: "مرتب حسب الاستعجال ثم الربح المقدر خلال 30 يومًا." },
+  ca_show_all: { fr: "Voir les {n} actions", ar: "عرض الإجراءات الـ{n}" },
+  ca_show_less: { fr: "Réduire", ar: "تقليص" },
+  ca_prio_1: { fr: "Urgent", ar: "عاجل" },
+  ca_prio_2: { fr: "Important", ar: "مهم" },
+  ca_prio_3: { fr: "Opportunité", ar: "فرصة" },
+  ca_impact_30: { fr: "gain est. / 30 j", ar: "ربح مقدر / 30 يومًا" },
+  ca_table_title: { fr: "Performance par catégorie (90 derniers jours)", ar: "الأداء حسب الفئة (آخر 90 يومًا)" },
+  ca_click_hint: { fr: "Cliquez sur une catégorie pour le détail", ar: "اضغط على فئة للتفاصيل" },
+  ca_table_footnote: {
+    fr: "Marge = bénéfice HT ÷ CA HT. Marge moyenne du catalogue : {margin}. Produits = vendus / actifs.",
+    ar: "الهامش = الربح ÷ رقم المعاملات بدون ضريبة. متوسط هامش المنتجات: {margin}. المنتجات = المبيعة / النشطة.",
+  },
+  ca_category: { fr: "Catégorie", ar: "الفئة" },
+  ca_ca_90: { fr: "CA TTC 90 j", ar: "رقم المعاملات 90 يومًا" },
+  ca_profit_90: { fr: "Bénéfice 90 j", ar: "الربح 90 يومًا" },
+  ca_profit_share: { fr: "Part bénéfice", ar: "حصة الربح" },
+  ca_products: { fr: "Produits", ar: "المنتجات" },
+  ca_actions_col: { fr: "Actions", ar: "إجراءات" },
+  ca_chart_profit: { fr: "Bénéfice par catégorie", ar: "الربح حسب الفئة" },
+  ca_chart_profit_hint: { fr: "Bénéfice HT des 90 derniers jours.", ar: "الربح بدون ضريبة لآخر 90 يومًا." },
+  ca_back: { fr: "Toutes les catégories", ar: "كل الفئات" },
+  ca_detail_sub: {
+    fr: "{rank}ᵉ catégorie sur {total} par bénéfice · {sold} produits vendus sur {n}",
+    ar: "الفئة رقم {rank} من {total} حسب الربح · {sold} منتجات مبيعة من {n}",
+  },
+  ca_of_total_profit: { fr: "du bénéfice total", ar: "من مجموع الربح" },
+  ca_of_total_ca: { fr: "du CA total", ar: "من مجموع رقم المعاملات" },
+  ca_catalog_avg: { fr: "Moyenne catalogue", ar: "متوسط المنتجات" },
+  ca_profit_last_month: { fr: "Bénéfice mois dernier", ar: "ربح الشهر الماضي" },
+  ca_recommended: { fr: "Actions recommandées", ar: "الإجراءات المقترحة" },
+  ca_monthly_profit: { fr: "Bénéfice mensuel (12 mois)", ar: "الربح الشهري (12 شهرًا)" },
+  ca_monthly_profit_hint: { fr: "Bénéfice HT de la catégorie ; le survol affiche aussi les quantités.", ar: "ربح الفئة؛ التمرير يعرض الكميات أيضًا." },
+  ca_split_hint: { fr: "part des unités vendues (90 j)", ar: "حصة الوحدات المبيعة (90 يومًا)" },
+  ca_upcoming_seasons: { fr: "Saisons à venir (2 mois)", ar: "المواسم القادمة (شهران)" },
+  ca_products_in: { fr: "Produits de la catégorie", ar: "منتجات الفئة" },
+  ca_stale_data: {
+    fr: "Dernière vente saisie le {date} (il y a {days} j) : les tendances 30 j ne sont pas calculables et les chiffres 90 j sont incomplets. Saisissez les ventes manquantes pour des recommandations fiables.",
+    ar: "آخر بيع مسجل في {date} (منذ {days} يومًا): لا يمكن حساب اتجاهات 30 يومًا وأرقام 90 يومًا غير كاملة. سجلوا المبيعات الناقصة للحصول على توصيات موثوقة.",
+  },
+  ca_no_recent_data: {
+    fr: "Aucune vente saisie sur les 90 derniers jours : l'analyse par catégorie ne peut rien recommander.",
+    ar: "لا توجد مبيعات مسجلة خلال آخر 90 يومًا: لا يمكن لتحليل الفئات تقديم أي توصية.",
+  },
+  ca_share_in_cat: { fr: "Part dans la catégorie", ar: "الحصة في الفئة" },
+
+  // Actions par catégorie
+  ca_act_loss: {
+    fr: "{n} produit(s) vendu(s) à perte ({names}) : corriger le prix de vente ou le prix Traiteur immédiatement.",
+    ar: "{n} منتج(ات) تُباع بخسارة ({names}): صححوا ثمن البيع أو ثمن الطراتور فورًا.",
+  },
+  ca_act_below_floor: {
+    fr: "{n} produit(s) sous la marge plancher de {floor} % ({names}) : remonter les prix ou renégocier avec le fournisseur.",
+    ar: "{n} منتج(ات) تحت الهامش الأدنى {floor}٪ ({names}): ارفعوا الأثمنة أو أعيدوا التفاوض مع المورد.",
+  },
+  ca_act_low_margin: {
+    fr: "Marge de la catégorie ({margin} %) nettement sous la moyenne ({avg} %) : renégocier les achats ou appliquer +3 % sur les produits réguliers.",
+    ar: "هامش الفئة ({margin}٪) أقل بكثير من المتوسط ({avg}٪): أعيدوا التفاوض على المشتريات أو طبقوا +3٪ على المنتجات المنتظمة.",
+  },
+  ca_act_decline: {
+    fr: "Ventes de la catégorie en baisse de {pct} % sur 30 jours : vérifier ruptures, visibilité en rayon et prix concurrents.",
+    ar: "مبيعات الفئة انخفضت بـ{pct}٪ خلال 30 يومًا: تحققوا من النفاد، الإبراز في الرفوف وأثمنة المنافسين.",
+  },
+  ca_act_decline_products: {
+    fr: "Ventes de la catégorie en baisse de {pct} % sur 30 jours, surtout {names} : vérifier ruptures et visibilité, relancer par une petite promo.",
+    ar: "مبيعات الفئة انخفضت بـ{pct}٪ خلال 30 يومًا، خاصة {names}: تحققوا من النفاد والإبراز، وأعيدوا التحريك بعرض صغير.",
+  },
+  ca_act_growth: {
+    fr: "Catégorie en hausse de {pct} % : sécuriser le stock, élargir la gamme avec 1 ou 2 nouvelles références.",
+    ar: "الفئة في ارتفاع بـ{pct}٪: أمّنوا المخزون ووسعوا التشكيلة بمرجع أو مرجعين جديدين.",
+  },
+  ca_act_season_high: {
+    fr: "« {season} » commence le {date} : demande attendue +{pct} % sur cette catégorie. Passer les commandes fournisseurs maintenant.",
+    ar: "«{season}» يبدأ في {date}: طلب متوقع +{pct}٪ على هذه الفئة. أرسلوا طلبيات الموردين الآن.",
+  },
+  ca_act_season_low: {
+    fr: "« {season} » ({date}) est une période creuse pour cette catégorie (−{pct} %) : réduire les commandes et prévoir une promo.",
+    ar: "«{season}» ({date}) فترة ركود لهذه الفئة (−{pct}٪): قلصوا الطلبيات وخططوا لعرض ترويجي.",
+  },
+  ca_act_concentration: {
+    fr: "« {name} » fait {pct} % du bénéfice de la catégorie : ne jamais être en rupture et développer une alternative.",
+    ar: "«{name}» يمثل {pct}٪ من ربح الفئة: يجب ألا ينفد أبدًا، وطوروا بديلًا له.",
+  },
+  ca_act_prune: {
+    fr: "{n} produit(s) sur {total} sans vente depuis 90 jours ({names}) : déstocker puis désactiver pour alléger la gamme.",
+    ar: "{n} منتج(ات) من {total} بدون مبيعات منذ 90 يومًا ({names}): صرفوا المخزون ثم عطلوها لتخفيف التشكيلة.",
+  },
+  ca_act_low_productivity: {
+    fr: "{n} références mais un bénéfice par produit bien inférieur à la moyenne : gamme trop large, garder les meilleures.",
+    ar: "{n} مراجع لكن ربح كل منتج أقل بكثير من المتوسط: تشكيلة واسعة جدًا، احتفظوا بالأفضل.",
+  },
+  ca_act_push_potential: {
+    fr: "{n} produit(s) à bonne marge mais peu vendu(s) ({names}) : mise en avant, dégustation ou lot avec un produit d'appel.",
+    ar: "{n} منتج(ات) بهامش جيد لكن مبيعات قليلة ({names}): إبراز، تذوق أو عرض مجمع مع منتج جذب.",
+  },
+  ca_act_pillar: {
+    fr: "Catégorie pilier ({pct} % du bénéfice) : priorité absolue au stock et à la visibilité, éviter les remises.",
+    ar: "فئة ركيزة ({pct}٪ من الربح): الأولوية القصوى للمخزون والإبراز، وتجنبوا التخفيضات.",
+  },
+  ca_act_pillar_price: {
+    fr: "Catégorie pilier ({pct} % du bénéfice) : tester +3 % sur les produits d'appel réguliers ({names}).",
+    ar: "فئة ركيزة ({pct}٪ من الربح): جربوا +3٪ على منتجات الجذب المنتظمة ({names}).",
+  },
+  ca_act_traiteur_driven: {
+    fr: "{pct} % des volumes viennent du Traiteur : soigner les prix Traiteur et proposer cette gamme aux autres clients Traiteur.",
+    ar: "{pct}٪ من الكميات تأتي من الطراتور: اعتنوا بأثمنة الطراتور واقترحوا هذه التشكيلة على زبناء طراتور آخرين.",
+  },
+  ca_act_no_traiteur: {
+    fr: "Des prix Traiteur existent mais aucune vente Traiteur : proposer cette catégorie aux clients Traiteur.",
+    ar: "توجد أثمنة طراتور لكن بدون مبيعات طراتور: اقترحوا هذه الفئة على زبناء الطراتور.",
+  },
+
+  // Inventaire
+  nav_inventory: { fr: "Inventaire", ar: "الجرد" },
+  stock_title: { fr: "Inventaire du stock", ar: "جرد المخزون" },
+  stock_hint: {
+    fr: "Comptez le stock à une date donnée : la valeur est calculée au prix d'achat HT.",
+    ar: "عُدّ المخزون في تاريخ معيّن: تُحسب القيمة بثمن الشراء بدون ضريبة.",
+  },
+  stock_date: { fr: "Date de l'inventaire", ar: "تاريخ الجرد" },
+  stock_previous: { fr: "Inventaires précédents", ar: "الجرود السابقة" },
+  stock_none_yet: { fr: "Aucun inventaire enregistré.", ar: "لا يوجد أي جرد مسجل." },
+  stock_counted: { fr: "Comptés", ar: "المعدودة" },
+  stock_not_counted: { fr: "Non comptés", ar: "غير المعدودة" },
+  stock_total_value: { fr: "Valeur du stock (HT)", ar: "قيمة المخزون (بدون ض.)" },
+  stock_products_counted: { fr: "Produits comptés", ar: "منتجات معدودة" },
+  stock_unit_cost: { fr: "PA HT", ar: "ثمن الشراء" },
+  stock_value: { fr: "Valeur", ar: "القيمة" },
+  stock_cost_frozen: {
+    fr: "Prix figé à l'inventaire (prix actuel : {price})",
+    ar: "ثمن مثبت عند الجرد (الثمن الحالي: {price})",
+  },
+  stock_start_from: { fr: "Reprendre un inventaire", ar: "استئناف جرد سابق" },
+  stock_start_from_label: { fr: "Copier les quantités du :", ar: "نسخ الكميات من:" },
+  stock_copy_done: { fr: "Quantités copiées — vérifiez puis Enregistrer", ar: "تم نسخ الكميات — تحقق ثم احفظ" },
+  stock_delete: { fr: "Supprimer cet inventaire", ar: "حذف هذا الجرد" },
+  stock_unsaved: { fr: "Modifications non enregistrées", ar: "تعديلات غير محفوظة" },
+  stock_print: { fr: "Imprimer", ar: "طباعة" },
 };
 
 interface I18nCtx {

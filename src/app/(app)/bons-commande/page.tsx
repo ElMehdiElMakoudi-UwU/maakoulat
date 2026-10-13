@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/lib/i18n";
 import { fmtMoney, today } from "@/lib/format";
-import { COMPANY } from "@/lib/company";
+import { useCompany, fillTemplate, DEFAULT_BC_SUBJECT, DEFAULT_BC_BODY } from "@/lib/settings";
 import { buildBcPdf, pdfToBase64, fetchLogoDataUrl } from "@/lib/bcPdf";
 import OrderSuggest from "@/components/demand/OrderSuggest";
 import type { PurchaseOrder, PurchaseOrderItem, Product, Supplier, OrderStatus } from "@/lib/types";
@@ -16,6 +16,7 @@ const emptyLine = (): EditLine => ({ unit: "", designation: "", quantity: "", un
 
 export default function BonsCommandePage() {
   const { t, lang } = useI18n();
+  const company = useCompany();
   const supabase = useMemo(() => createClient(), []);
 
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
@@ -246,7 +247,8 @@ export default function BonsCommandePage() {
         vatAmount: editVAT,
         totalTTC: editTTC,
       },
-      logo
+      logo,
+      company
     );
   }
 
@@ -294,11 +296,21 @@ export default function BonsCommandePage() {
       const doc = await makeBcDoc(validLines, supplier?.name ?? "");
       const pdfBase64 = pdfToBase64(doc);
       const filename = bcFilename();
-      const subject = `${t("order")}${header.bc_number.trim() ? ` N° ${header.bc_number.trim()}` : ""} — ${COMPANY.name}`;
-      const text =
-        `Bonjour,\n\nVeuillez trouver ci-joint notre bon de commande` +
-        `${header.bc_number.trim() ? ` N° ${header.bc_number.trim()}` : ""} du ${header.order_date}.\n\n` +
-        `Cordialement,\n${COMPANY.name}\nTél : ${COMPANY.tel}`;
+      // Modèle du message (modifiable dans Paramètres).
+      const { data: tplRows } = await supabase
+        .from("app_settings")
+        .select("key, value")
+        .in("key", ["bc_email_subject", "bc_email_body"]);
+      const tpl = new Map(((tplRows as { key: string; value: string | null }[]) ?? []).map((r) => [r.key, r.value]));
+      const vars = {
+        numero: header.bc_number.trim() ? ` N° ${header.bc_number.trim()}` : "",
+        date: header.order_date,
+        fournisseur: supplier?.name ?? "",
+        societe: company.name,
+        tel: company.tel,
+      };
+      const subject = fillTemplate(tpl.get("bc_email_subject")?.trim() || DEFAULT_BC_SUBJECT, vars);
+      const text = fillTemplate(tpl.get("bc_email_body")?.trim() || DEFAULT_BC_BODY, vars);
 
       const res = await fetch("/api/send-bc", {
         method: "POST",
@@ -484,7 +496,7 @@ export default function BonsCommandePage() {
       <div className="print-area card p-5">
         {/* En-tête document (identique au modèle Excel : nom société + logo) */}
         <div className="mb-4 flex items-center justify-between gap-4 border-b-2 border-primary pb-3">
-          <div className="text-lg font-bold tracking-wide text-primary">{COMPANY.name}</div>
+          <div className="text-lg font-bold tracking-wide text-primary">{company.name}</div>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/logo-maakoulat.jpeg" alt="Maakoulatcom" className="h-16 w-auto" />
         </div>
@@ -587,9 +599,9 @@ export default function BonsCommandePage() {
 
         {/* Pied de page (identique au modèle Excel) */}
         <div className="mt-6 border-t border-border pt-3 text-center text-[11px] leading-relaxed text-muted">
-          Adresse : {COMPANY.address} · Tél : {COMPANY.tel} · Email : {COMPANY.email}
+          Adresse : {company.address} · Tél : {company.tel} · Email : {company.email}
           <br />
-          RC : {COMPANY.rc} · Patente : {COMPANY.patente} · IF : {COMPANY.if} · ICE : {COMPANY.ice}
+          RC : {company.rc} · Patente : {company.patente} · IF : {company.if} · ICE : {company.ice}
         </div>
       </div>
     </div>

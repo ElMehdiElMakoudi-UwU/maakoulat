@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/lib/i18n";
 import { currentMonth, fmtMoney, fmtNum, monthLabel, monthRange } from "@/lib/format";
-import { COMPANY } from "@/lib/company";
+import { useCompany } from "@/lib/settings";
 import { generateInvoices, invoiceTotals, type PoolLine } from "@/lib/ventilation";
 import type { Client, SalesInvoice, SalesInvoiceItem } from "@/lib/types";
 
@@ -21,6 +21,7 @@ function InvoiceDoc({
   t: (k: string) => string;
   lang: "fr" | "ar";
 }) {
+  const company = useCompany();
   const lines = items.map((it) => ({
     quantity: Number(it.quantity),
     unit_price: Number(it.unit_price),
@@ -54,7 +55,7 @@ function InvoiceDoc({
 
       <div className="print-area card p-5">
         <div className="mb-4 flex items-center justify-between gap-4 border-b-2 border-primary pb-3">
-          <div className="text-lg font-bold tracking-wide text-primary">{COMPANY.name}</div>
+          <div className="text-lg font-bold tracking-wide text-primary">{company.name}</div>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/logo-maakoulat.jpeg" alt="Maakoulatcom" className="h-16 w-auto" />
         </div>
@@ -137,10 +138,10 @@ function InvoiceDoc({
 
         <div className="mt-6 border-t border-border pt-3 text-center text-[11px] text-muted">
           <div>
-            {COMPANY.address} · {t("phone")} : {COMPANY.tel} · {COMPANY.email}
+            {company.address} · {t("phone")} : {company.tel} · {company.email}
           </div>
           <div>
-            RC : {COMPANY.rc} · Patente : {COMPANY.patente} · IF : {COMPANY.if} · ICE : {COMPANY.ice}
+            RC : {company.rc} · Patente : {company.patente} · IF : {company.if} · ICE : {company.ice}
           </div>
         </div>
       </div>

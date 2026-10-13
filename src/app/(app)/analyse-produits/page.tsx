@@ -31,6 +31,8 @@ import {
   type Summary,
 } from "@/lib/productInsights";
 import type { Seller, Supplier } from "@/lib/types";
+import { buildCategoryReport } from "@/lib/categoryInsights";
+import CategoryAnalysis from "@/components/CategoryAnalysis";
 
 type SortKey = "profit90" | "lastMonth" | "margin" | "trend" | "name";
 
@@ -94,6 +96,7 @@ export default function ProductAnalysisPage() {
   const [marginFloor, setMarginFloor] = useState(0.1);
   const [elasticity, setElasticity] = useState(-2);
   const [selected, setSelected] = useState<string | null>(null);
+  const [view, setView] = useState<"products" | "categories">("products");
 
   useEffect(() => {
     const now = today();
@@ -114,7 +117,9 @@ export default function ProductAnalysisPage() {
         ]);
         const kindOf = new Map(sellers.map((s) => [s.id, s.kind]));
         setState(demand);
-        setBase(buildSalesBase(demand.products, sales, kindOf, now));
+        // La catégorie « Traiteur » n'est qu'une liste de prix, pas des produits vendus
+        const analysed = demand.products.filter((p) => p.category?.trim().toLowerCase() !== "traiteur");
+        setBase(buildSalesBase(analysed, sales, kindOf, now));
         setSuppliers(Object.fromEntries(sup.map((s) => [s.id, s.name])));
       } catch (e) {
         setError((e as { message?: string })?.message ?? String(e));
@@ -130,6 +135,11 @@ export default function ProductAnalysisPage() {
     if (!s) return null;
     return analyzeProduct(base, s, model, state.seasons, state.periods, { marginFloor, elasticity });
   }, [base, model, state, selected, marginFloor, elasticity]);
+
+  const categoryReport = useMemo(() => {
+    if (!base || !model || !state) return null;
+    return buildCategoryReport(base, model, state.seasons, state.periods, { marginFloor });
+  }, [base, model, state, marginFloor]);
 
   return (
     <div>
@@ -166,6 +176,17 @@ export default function ProductAnalysisPage() {
         </div>
       </div>
 
+      {!analysis && (
+        <div className="mb-4 inline-flex rounded-lg border border-border bg-surface p-1 text-sm">
+          {(["products", "categories"] as const).map((v) => (
+            <button key={v} onClick={() => setView(v)}
+              className={`rounded-md px-4 py-1.5 font-medium transition ${view === v ? "bg-primary text-white" : "text-muted hover:text-foreground"}`}>
+              {t(v === "products" ? "ca_tab_products" : "ca_tab_categories")}
+            </button>
+          ))}
+        </div>
+      )}
+
       {error ? (
         <p className="rounded-lg bg-danger/10 px-4 py-3 text-sm text-danger">{error}</p>
       ) : !base || !model ? (
@@ -173,6 +194,8 @@ export default function ProductAnalysisPage() {
       ) : analysis ? (
         <ProductDetail a={analysis} supplier={suppliers[analysis.summary.product.supplier_id ?? ""]} floor={marginFloor}
           onBack={() => setSelected(null)} onOpen={setSelected} />
+      ) : view === "categories" && categoryReport ? (
+        <CategoryAnalysis report={categoryReport} onOpenProduct={setSelected} />
       ) : (
         <ProductList base={base} onOpen={setSelected} />
       )}

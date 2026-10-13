@@ -33,6 +33,14 @@ export interface Sale {
   sale_price: number;
 }
 
+export interface InventoryCount {
+  id: string;
+  count_date: string; // YYYY-MM-DD
+  product_id: string;
+  quantity: number;
+  unit_cost: number; // prix d'achat HT figé à la saisie
+}
+
 export interface Supplier {
   id: string;
   name: string;

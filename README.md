@@ -31,7 +31,9 @@ cp .env.local.example .env.local
 
 ### Envoi des bons de commande par email (Gmail)
 
-Pour activer le bouton **« Envoyer par email »** (BC en PDF joint), ajoutez dans `.env.local` :
+Le plus simple : page **Paramètres → Envoi des emails (Gmail)** (après avoir exécuté `supabase/migration_settings.sql`). Le mot de passe y est stocké dans une table protégée (`app_secrets`), jamais renvoyé à la page ni inclus dans la sauvegarde. Un bouton « Envoyer un email de test » vérifie la configuration.
+
+Alternative (utilisée si rien n'est saisi dans Paramètres) : ajoutez dans `.env.local` :
 
 ```
 GMAIL_USER=maakoulatcomdis@gmail.com

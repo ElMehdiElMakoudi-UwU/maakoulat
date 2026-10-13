@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import nodemailer from "nodemailer";
 import { createClient } from "@/lib/supabase/server";
+import { getMailConfig, makeTransport, fromHeader } from "@/lib/mailer";
 
 // nodemailer nécessite le runtime Node.js (pas Edge).
 export const runtime = "nodejs";
@@ -22,10 +22,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  // 2) Configuration Gmail présente ?
-  const gmailUser = process.env.GMAIL_USER;
-  const gmailPass = process.env.GMAIL_APP_PASSWORD;
-  if (!gmailUser || !gmailPass) {
+  // 2) Configuration Gmail présente ? (Paramètres, sinon variables d'environnement)
+  const cfg = await getMailConfig(supabase);
+  if (!cfg) {
     return NextResponse.json({ error: "not_configured" }, { status: 503 });
   }
 
@@ -46,13 +45,8 @@ export async function POST(req: Request) {
 
   // 4) Envoi via SMTP Gmail (mot de passe d'application).
   try {
-    const transporter = nodemailer.createTransport({
-      service: "gmail",
-      auth: { user: gmailUser, pass: gmailPass },
-    });
-
-    await transporter.sendMail({
-      from: `"${process.env.GMAIL_FROM_NAME || "Maakoulatcom Distribution"}" <${gmailUser}>`,
+    await makeTransport(cfg).sendMail({
+      from: fromHeader(cfg),
       to,
       subject: subject || "Bon de commande",
       text: text || "Veuillez trouver ci-joint notre bon de commande.",
