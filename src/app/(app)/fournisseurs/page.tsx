@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { VAT_RATES } from "@/lib/tva";
 import { useI18n } from "@/lib/i18n";
 import { fmtDays, fmtMoney, fmtNum, today } from "@/lib/format";
 import type { Supplier, SupplierPayment, SupplierInvoice } from "@/lib/types";
@@ -421,8 +422,8 @@ function SupplierDetail({
   lang: "fr" | "ar";
 }) {
   const terms = supplier.payment_terms_days ?? 0;
-  const [mForm, setMForm] = useState<{ kind: MovementKind; date: string; due: string; amount: string; note: string }>({
-    kind: "invoice", date: today(), due: addDays(today(), terms), amount: "", note: "",
+  const [mForm, setMForm] = useState<{ kind: MovementKind; date: string; due: string; amount: string; vat: string; note: string }>({
+    kind: "invoice", date: today(), due: addDays(today(), terms), amount: "", vat: "", note: "",
   });
   const byInvoice = useMemo(() => new Map(allocated.map((r) => [r.invoice.id, r])), [allocated]);
   const overdue = allocated.filter((r) => r.status === "overdue").reduce((s, r) => s + r.remaining, 0);
@@ -456,6 +457,7 @@ function SupplierDetail({
     if (mForm.kind === "invoice") {
       await supabase.from("supplier_invoices").insert({
         supplier_id: supplier.id, inv_date: mForm.date, due_date: mForm.due || null, amount, note: mForm.note || null,
+        ...(mForm.vat !== "" ? { vat_rate: Number(mForm.vat) } : {}),
       });
     } else {
       await supabase.from("supplier_payments").insert({
@@ -558,7 +560,7 @@ function SupplierDetail({
       </p>
 
       {/* Nouveau mouvement */}
-      <div className="card no-print mb-4 grid gap-2 p-4 sm:grid-cols-3 xl:grid-cols-6">
+      <div className="card no-print mb-4 grid gap-2 p-4 sm:grid-cols-3 xl:grid-cols-7">
         <select className="input" value={mForm.kind} onChange={(e) => setMForm({ ...mForm, kind: e.target.value as MovementKind })}>
           <option value="invoice">{t("type_invoice")}</option>
           <option value="payment">{t("type_payment")}</option>
@@ -574,6 +576,14 @@ function SupplierDetail({
           <div className="hidden sm:block" />
         )}
         <input className="input" type="number" placeholder={t("amount")} value={mForm.amount} onChange={(e) => setMForm({ ...mForm, amount: e.target.value })} />
+        {mForm.kind === "invoice" ? (
+          <select className="input" title={t("vat")} value={mForm.vat} onChange={(e) => setMForm({ ...mForm, vat: e.target.value })}>
+            <option value="">{t("vat")} ?</option>
+            {VAT_RATES.map((r) => <option key={r} value={r}>{t("vat_amount")} {r}%</option>)}
+          </select>
+        ) : (
+          <div className="hidden xl:block" />
+        )}
         <input className="input" placeholder={t("note")} value={mForm.note} onChange={(e) => setMForm({ ...mForm, note: e.target.value })} />
         <button onClick={addMovement} className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-fg">+ {t("add")}</button>
       </div>

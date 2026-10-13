@@ -35,6 +35,7 @@ const BACKUP_TABLES = [
   "bank_statements",
   "bank_transactions",
   "app_settings",
+  "tva_declarations",
 ] as const;
 
 type Row = { key: string; value: string | null };

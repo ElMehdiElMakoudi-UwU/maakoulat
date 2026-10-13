@@ -68,6 +68,7 @@ export interface Charge {
   label: string;
   amount: number;
   month: string | null;
+  vat_rate?: number | null; // TVA % incluse dans le montant (migration_tva)
   active: boolean;
   sort_order: number;
 }
@@ -84,7 +85,8 @@ export interface SupplierInvoice {
   supplier_id: string;
   inv_date: string;
   due_date: string | null; // échéance ; null = inv_date + délai fournisseur
-  amount: number;
+  amount: number; // TTC
+  vat_rate?: number | null; // TVA % (migration_tva) ; null = non renseigné
   note: string | null;
   created_at?: string;
 }
