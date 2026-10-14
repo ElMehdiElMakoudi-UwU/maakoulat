@@ -51,6 +51,7 @@ export interface Supplier {
   contact_name: string | null;
   notes: string | null;
   payment_terms_days: number; // délai de paiement par défaut (jours)
+  vat_rate?: number | null; // TVA % sur ses paiements (migration_tva) ; null = non renseigné
   active: boolean;
   sort_order: number;
 }
@@ -68,7 +69,6 @@ export interface Charge {
   label: string;
   amount: number;
   month: string | null;
-  vat_rate?: number | null; // TVA % incluse dans le montant (migration_tva)
   active: boolean;
   sort_order: number;
 }
@@ -85,8 +85,7 @@ export interface SupplierInvoice {
   supplier_id: string;
   inv_date: string;
   due_date: string | null; // échéance ; null = inv_date + délai fournisseur
-  amount: number; // TTC
-  vat_rate?: number | null; // TVA % (migration_tva) ; null = non renseigné
+  amount: number;
   note: string | null;
   created_at?: string;
 }

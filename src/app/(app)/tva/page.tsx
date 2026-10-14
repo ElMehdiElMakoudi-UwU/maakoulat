@@ -3,23 +3,22 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/lib/i18n";
+import Link from "next/link";
 import { currentMonth, fmtMoney, monthLabel, today } from "@/lib/format";
 import { fetchAll } from "@/lib/demandData";
+import { reconcileTx, unreconcileTx } from "@/lib/bankReconcile";
+import type { BankTransaction, Supplier } from "@/lib/types";
 import {
-  VAT_RATES, byRate, periodKey, periodMonths, periodRange, previousPeriod, round2, vatFromTTC,
+  byRate, periodKey, periodMonths, periodRange, previousPeriod, round2, vatFromTTC,
   type PeriodMode,
 } from "@/lib/tva";
 
 interface SaleRow { product_id: string; quantity: number; sale_price: number }
-interface SupInv { id: string; inv_date: string; amount: number; vat_rate: number | null; note: string | null; suppliers: { name: string } | { name: string }[] | null }
-interface ChargeRow { id: string; label: string; amount: number; month: string | null; active: boolean; vat_rate: number | null }
 interface InvItem { quantity: number; unit_price: number; vat_rate: number }
 interface Declaration {
   period: string; collected: number; deductible: number; credit_in: number; result: number;
   declared_on: string; paid_on: string | null; note: string | null;
 }
-
-const supName = (r: SupInv) => (Array.isArray(r.suppliers) ? r.suppliers[0]?.name : r.suppliers?.name) ?? "—";
 
 export default function TvaPage() {
   const { t, lang } = useI18n();
@@ -34,8 +33,10 @@ export default function TvaPage() {
   const [vatOf, setVatOf] = useState<Record<string, number>>({});
   const [sales, setSales] = useState<SaleRow[]>([]);
   const [invItems, setInvItems] = useState<InvItem[]>([]);
-  const [supInvoices, setSupInvoices] = useState<SupInv[]>([]);
-  const [charges, setCharges] = useState<ChargeRow[]>([]);
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [debits, setDebits] = useState<BankTransaction[]>([]);
+  const [onlyAssigned, setOnlyAssigned] = useState(false);
+  const [busyTx, setBusyTx] = useState<string | null>(null);
   const [decl, setDecl] = useState<Declaration | null>(null);
   const [prevDecl, setPrevDecl] = useState<Declaration | null>(null);
   const [creditIn, setCreditIn] = useState("0");
@@ -43,25 +44,25 @@ export default function TvaPage() {
   const load = useCallback(async () => {
     setLoading(true);
     const { start, end } = periodRange(period);
-    const [prodRows, saleRows, invRes, supRes, chRes, declRes] = await Promise.all([
+    const [prodRows, saleRows, invRes, supRes, txRes, declRes] = await Promise.all([
       fetchAll<{ id: string; vat_rate: number }>((a, b) =>
         supabase.from("products").select("id,vat_rate").order("id").range(a, b)),
       fetchAll<SaleRow>((a, b) =>
         supabase.from("sales").select("product_id,quantity,sale_price")
           .gte("sale_date", start).lt("sale_date", end).order("id").range(a, b)),
       supabase.from("sales_invoices").select("id").eq("status", "final").in("month", months),
-      supabase.from("supplier_invoices").select("id,inv_date,amount,vat_rate,note,suppliers(name)")
-        .gte("inv_date", start).lt("inv_date", end).order("inv_date"),
-      supabase.from("charges").select("id,label,amount,month,active,vat_rate")
-        .or(`month.is.null,month.in.(${months.join(",")})`).order("sort_order"),
+      supabase.from("suppliers").select("*").order("sort_order"),
+      supabase.from("bank_transactions").select("*").eq("direction", "debit")
+        .gte("op_date", start).lt("op_date", end).order("op_date"),
       supabase.from("tva_declarations").select("*").in("period", [period, previousPeriod(period)]),
     ]);
 
-    setMigrationMissing(!!supRes.error || !!chRes.error || !!declRes.error);
+    const sups = (supRes.data as Supplier[]) ?? [];
+    setMigrationMissing(!!declRes.error || (sups.length > 0 && !("vat_rate" in sups[0])));
     setVatOf(Object.fromEntries(prodRows.map((p) => [p.id, Number(p.vat_rate) || 0])));
     setSales(saleRows);
-    setSupInvoices((supRes.data as SupInv[]) ?? []);
-    setCharges(((chRes.data as ChargeRow[]) ?? []).filter((c) => c.month || c.active));
+    setSuppliers(sups);
+    setDebits((txRes.data as BankTransaction[]) ?? []);
 
     const invIds = ((invRes.data as { id: string }[]) ?? []).map((r) => r.id);
     if (invIds.length) {
@@ -90,20 +91,27 @@ export default function TvaPage() {
   const collected = collectedLines.reduce((s, l) => s + l.vat, 0);
   const invoicedVat = invItems.reduce((s, i) => s + Number(i.quantity) * Number(i.unit_price) * Number(i.vat_rate) / 100, 0);
 
-  // Charges fixes : comptées une fois par mois de la période
-  const chargeRows = useMemo(
-    () => charges.map((c) => {
-      const ttcAmt = Number(c.amount) * (c.month ? 1 : months.length);
-      return { ...c, ttc: ttcAmt, vat: vatFromTTC(ttcAmt, c.vat_rate) };
+  // TVA déductible : débits du relevé rapprochés avec un fournisseur, au taux du fournisseur
+  const supById = useMemo(() => new Map(suppliers.map((s) => [s.id, s])), [suppliers]);
+  const debitRows = useMemo(
+    () => debits.map((x) => {
+      const sup = x.supplier_id ? supById.get(x.supplier_id) : undefined;
+      const paid = Math.abs(Number(x.amount));
+      return { tx: x, sup, paid, rate: sup?.vat_rate ?? null, vat: sup ? vatFromTTC(paid, sup.vat_rate) : 0 };
     }),
-    [charges, months]
+    [debits, supById]
   );
-  const supVat = supInvoices.reduce((s, i) => s + vatFromTTC(Number(i.amount), i.vat_rate), 0);
-  const chargeVat = chargeRows.reduce((s, c) => s + c.vat, 0);
-  const deductible = supVat + chargeVat;
+  const assigned = debitRows.filter((r) => r.sup);
+  const deductible = assigned.reduce((s, r) => s + r.vat, 0);
+  const paidToSuppliers = assigned.reduce((s, r) => s + r.paid, 0);
+  const unassignedCount = debitRows.length - assigned.length;
+  const visibleDebits = onlyAssigned ? assigned : debitRows;
+  // Fournisseurs payés sur la période mais sans taux de TVA renseigné
+  const suppliersMissingRate = [...new Map(
+    assigned.filter((r) => r.sup!.vat_rate == null).map((r) => [r.sup!.id, r.sup!])
+  ).values()];
   const credit = Math.max(0, parseFloat(creditIn) || 0);
   const result = round2(collected - deductible - credit);
-  const missingSup = supInvoices.filter((i) => i.vat_rate == null).length;
 
   const changedSinceDecl = !!decl && (
     Math.abs(Number(decl.collected) - round2(collected)) > 0.01 ||
@@ -111,18 +119,24 @@ export default function TvaPage() {
   );
 
   // ---------- Actions ----------
-  async function setSupRate(id: string, v: string) {
-    const rate = v === "" ? null : Number(v);
-    setSupInvoices((old) => old.map((i) => (i.id === id ? { ...i, vat_rate: rate } : i)));
-    await supabase.from("supplier_invoices").update({ vat_rate: rate }).eq("id", id);
-  }
-  async function setChargeRate(id: string, v: string) {
-    const rate = v === "" ? null : Number(v);
-    setCharges((old) => old.map((c) => (c.id === id ? { ...c, vat_rate: rate } : c)));
-    await supabase.from("charges").update({ vat_rate: rate }).eq("id", id);
+  // Choisir un fournisseur = rapprocher le débit (même logique que la page Banque)
+  async function assignSupplier(tx: BankTransaction, supplierId: string) {
+    if (supplierId === (tx.supplier_id ?? "")) return;
+    setBusyTx(tx.id);
+    let cur = tx;
+    if (tx.reconciled || tx.supplier_id) {
+      const patch = await unreconcileTx(supabase, tx);
+      cur = { ...tx, ...patch };
+    }
+    if (supplierId) {
+      const patch = await reconcileTx(supabase, cur, supplierId);
+      if (patch) cur = { ...cur, ...patch };
+    }
+    setDebits((old) => old.map((x) => (x.id === tx.id ? cur : x)));
+    setBusyTx(null);
   }
   async function declare() {
-    if (missingSup > 0 && !confirm(t("tva_confirm_missing"))) return;
+    if ((suppliersMissingRate.length > 0 || unassignedCount > 0) && !confirm(t("tva_confirm_missing"))) return;
     await supabase.from("tva_declarations").upsert({
       period,
       collected: round2(collected),
@@ -154,12 +168,10 @@ export default function TvaPage() {
       ...collectedLines.map((l) => ["", `${l.rate}%`, l.base.toFixed(2), l.vat.toFixed(2), (l.base + l.vat).toFixed(2)]),
       ["", "Total", "", collected.toFixed(2), ""],
       [],
-      ["TVA déductible — factures fournisseurs", "Date", "Fournisseur", "TTC", "Taux", "TVA"],
-      ...supInvoices.map((i) => ["", i.inv_date, supName(i), Number(i.amount).toFixed(2),
-        i.vat_rate == null ? "?" : `${i.vat_rate}%`, vatFromTTC(Number(i.amount), i.vat_rate).toFixed(2)]),
-      ["TVA déductible — charges", "", "Libellé", "TTC", "Taux", "TVA"],
-      ...chargeRows.map((c) => ["", "", c.label, c.ttc.toFixed(2), c.vat_rate == null ? "" : `${c.vat_rate}%`, c.vat.toFixed(2)]),
-      ["", "", "Total déductible", "", "", deductible.toFixed(2)],
+      ["TVA déductible — paiements fournisseurs (relevé bancaire)", "Date", "Libellé", "Fournisseur", "Montant payé TTC", "Taux", "TVA"],
+      ...assigned.map((r) => ["", r.tx.op_date, r.tx.label, r.sup!.name, r.paid.toFixed(2),
+        r.rate == null ? "?" : `${r.rate}%`, r.vat.toFixed(2)]),
+      ["", "", "", "Total", paidToSuppliers.toFixed(2), "", deductible.toFixed(2)],
       [],
       ["Crédit reporté", credit.toFixed(2)],
       [result >= 0 ? "TVA à payer" : "Crédit de TVA", Math.abs(result).toFixed(2)],
@@ -178,14 +190,6 @@ export default function TvaPage() {
     : `${t("tva_quarter")} ${period.slice(-1)} ${period.slice(0, 4)}`;
   const fmtD = (d: string) =>
     new Intl.DateTimeFormat(lang === "ar" ? "ar-MA" : "fr-FR", { dateStyle: "medium" }).format(new Date(d + "T00:00:00"));
-
-  const rateSelect = (value: number | null | undefined, onChange: (v: string) => void, allowNone: string) => (
-    <select value={value == null ? "" : String(Number(value))} onChange={(e) => onChange(e.target.value)}
-      className={`no-print rounded-md border bg-surface px-2 py-1 text-sm outline-none focus:border-primary ${value == null && allowNone === "?" ? "border-accent" : "border-border"}`}>
-      <option value="">{allowNone}</option>
-      {VAT_RATES.map((r) => <option key={r} value={r}>{r}%</option>)}
-    </select>
-  );
 
   return (
     <div>
@@ -268,9 +272,10 @@ export default function TvaPage() {
                 {t("tva_changed_since")} ({t("tva_declared_amounts")} : {fmtMoney(Number(decl!.collected), lang)} / {fmtMoney(Number(decl!.deductible), lang)})
               </p>
             )}
-            {missingSup > 0 && (
+            {suppliersMissingRate.length > 0 && (
               <p className="no-print mt-3 rounded-lg bg-accent/10 px-3 py-2 text-xs text-accent">
-                ⚠️ {missingSup} {t("tva_missing_rates")}
+                ⚠️ {t("tva_missing_rates")} <span className="font-semibold">{suppliersMissingRate.map((s) => s.name).join(", ")}</span>
+                {" — "}<Link href="/fournisseurs" className="underline">{t("nav_suppliers")}</Link>
               </p>
             )}
 
@@ -338,88 +343,82 @@ export default function TvaPage() {
             </div>
           </div>
 
-          {/* TVA déductible — factures fournisseurs */}
+          {/* TVA déductible — débits du relevé bancaire */}
           <div className="card overflow-x-auto">
-            <div className="border-b border-border px-4 py-2.5">
-              <div className="font-bold">{t("tva_deductible")} — {t("tva_supplier_invoices")}</div>
-              <div className="no-print text-xs text-muted">{t("tva_deductible_hint")}</div>
+            <div className="flex flex-wrap items-start justify-between gap-2 border-b border-border px-4 py-2.5">
+              <div>
+                <div className="font-bold">{t("tva_deductible")} — {t("tva_bank_payments")}</div>
+                <div className="no-print text-xs text-muted">{t("tva_deductible_hint")}</div>
+              </div>
+              {debitRows.length > 0 && (
+                <div className="no-print flex items-center gap-3 text-xs">
+                  {unassignedCount > 0 && (
+                    <span className="rounded-full bg-accent/15 px-2 py-0.5 font-medium text-accent">
+                      {unassignedCount} {t("tva_unassigned")}
+                    </span>
+                  )}
+                  <label className="flex items-center gap-1.5 text-muted">
+                    <input type="checkbox" checked={onlyAssigned} onChange={(e) => setOnlyAssigned(e.target.checked)} />
+                    {t("tva_only_assigned")}
+                  </label>
+                </div>
+              )}
             </div>
-            <table className="w-full min-w-[560px] text-sm">
+            <table className="w-full min-w-[640px] text-sm">
               <thead>
                 <tr className="border-b border-border text-muted">
                   <th className="px-4 py-2 text-start font-medium">{t("date")}</th>
-                  <th className="px-4 py-2 text-start font-medium">{t("supplier")}</th>
-                  <th className="px-4 py-2 text-end font-medium">TTC</th>
-                  <th className="px-4 py-2 text-end font-medium">{t("vat")}</th>
-                  <th className="px-4 py-2 text-end font-medium">{t("vat_amount")}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {supInvoices.map((i) => (
-                  <tr key={i.id}>
-                    <td className="px-4 py-2 whitespace-nowrap">{fmtD(i.inv_date)}</td>
-                    <td className="px-4 py-2 font-medium">
-                      {supName(i)}
-                      {i.note && <span className="ms-1 text-xs text-muted">· {i.note}</span>}
-                    </td>
-                    <td className="px-4 py-2 text-end">{fmtMoney(Number(i.amount), lang)}</td>
-                    <td className="px-4 py-2 text-end">
-                      {rateSelect(i.vat_rate, (v) => setSupRate(i.id, v), "?")}
-                      <span className="print-area hidden">{i.vat_rate == null ? "?" : `${i.vat_rate}%`}</span>
-                    </td>
-                    <td className="px-4 py-2 text-end font-semibold">{fmtMoney(vatFromTTC(Number(i.amount), i.vat_rate), lang)}</td>
-                  </tr>
-                ))}
-                {supInvoices.length === 0 && <tr><td colSpan={5} className="p-6 text-center text-muted">{t("no_data")}</td></tr>}
-              </tbody>
-              {supInvoices.length > 0 && (
-                <tfoot>
-                  <tr className="border-t border-border font-bold">
-                    <td className="px-4 py-2.5" colSpan={4}>{t("total")}</td>
-                    <td className="px-4 py-2.5 text-end">{fmtMoney(supVat, lang)}</td>
-                  </tr>
-                </tfoot>
-              )}
-            </table>
-          </div>
-
-          {/* TVA déductible — charges */}
-          <div className="card overflow-x-auto">
-            <div className="border-b border-border px-4 py-2.5">
-              <div className="font-bold">{t("tva_deductible")} — {t("nav_charges")}</div>
-              <div className="no-print text-xs text-muted">{t("tva_charges_hint")}</div>
-            </div>
-            <table className="w-full min-w-[520px] text-sm">
-              <thead>
-                <tr className="border-b border-border text-muted">
                   <th className="px-4 py-2 text-start font-medium">{t("label")}</th>
-                  <th className="px-4 py-2 text-end font-medium">TTC</th>
+                  <th className="px-4 py-2 text-end font-medium">{t("tva_paid_amount")}</th>
+                  <th className="px-4 py-2 text-start font-medium">{t("supplier")}</th>
                   <th className="px-4 py-2 text-end font-medium">{t("vat")}</th>
                   <th className="px-4 py-2 text-end font-medium">{t("vat_amount")}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {chargeRows.map((c) => (
-                  <tr key={c.id}>
-                    <td className="px-4 py-2 font-medium">
-                      {c.label}
-                      <span className="ms-1 text-xs text-muted">· {c.month ? t("one_off_short") : t("recurring_short")}</span>
+                {visibleDebits.map((r) => (
+                  <tr key={r.tx.id} className={r.sup ? "bg-success/5" : "print:hidden"}>
+                    <td className="whitespace-nowrap px-4 py-2">{fmtD(r.tx.op_date)}</td>
+                    <td className="px-4 py-2">
+                      <div>{r.tx.label}</div>
+                      {r.tx.op_ref && <div className="text-xs text-muted">{r.tx.op_ref}</div>}
                     </td>
-                    <td className="px-4 py-2 text-end">{fmtMoney(c.ttc, lang)}</td>
-                    <td className="px-4 py-2 text-end">
-                      {rateSelect(c.vat_rate, (v) => setChargeRate(c.id, v), t("tva_no_vat"))}
-                      <span className="print-area hidden">{c.vat_rate == null ? "—" : `${c.vat_rate}%`}</span>
+                    <td className="whitespace-nowrap px-4 py-2 text-end font-medium">{fmtMoney(r.paid, lang)}</td>
+                    <td className="px-4 py-2">
+                      <select
+                        value={r.tx.supplier_id ?? ""}
+                        disabled={busyTx === r.tx.id}
+                        onChange={(e) => assignSupplier(r.tx, e.target.value)}
+                        className="no-print input max-w-[12rem] py-1 text-sm disabled:opacity-50"
+                      >
+                        <option value="">—</option>
+                        {suppliers
+                          .filter((s) => s.active || s.id === r.tx.supplier_id)
+                          .map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                      </select>
+                      <span className="print-area hidden">{r.sup?.name ?? ""}</span>
                     </td>
-                    <td className="px-4 py-2 text-end font-semibold">{fmtMoney(c.vat, lang)}</td>
+                    <td className={`px-4 py-2 text-end ${r.sup && r.rate == null ? "font-semibold text-accent" : ""}`}>
+                      {r.sup ? (r.rate == null ? "?" : `${Number(r.rate)}%`) : "—"}
+                    </td>
+                    <td className="px-4 py-2 text-end font-semibold">{r.sup ? fmtMoney(r.vat, lang) : "—"}</td>
                   </tr>
                 ))}
-                {chargeRows.length === 0 && <tr><td colSpan={4} className="p-6 text-center text-muted">{t("no_data")}</td></tr>}
+                {visibleDebits.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="p-6 text-center text-muted">
+                      {debits.length ? t("no_data") : <>{t("tva_no_bank")} — <Link href="/banque" className="text-primary underline">{t("nav_bank")}</Link></>}
+                    </td>
+                  </tr>
+                )}
               </tbody>
-              {chargeRows.length > 0 && (
+              {assigned.length > 0 && (
                 <tfoot>
                   <tr className="border-t border-border font-bold">
-                    <td className="px-4 py-2.5" colSpan={3}>{t("total")}</td>
-                    <td className="px-4 py-2.5 text-end">{fmtMoney(chargeVat, lang)}</td>
+                    <td className="px-4 py-2.5" colSpan={2}>{t("total")}</td>
+                    <td className="px-4 py-2.5 text-end">{fmtMoney(paidToSuppliers, lang)}</td>
+                    <td colSpan={2} />
+                    <td className="px-4 py-2.5 text-end">{fmtMoney(deductible, lang)}</td>
                   </tr>
                 </tfoot>
               )}

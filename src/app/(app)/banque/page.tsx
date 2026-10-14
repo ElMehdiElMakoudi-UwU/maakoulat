@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/lib/i18n";
 import { currentMonth, fmtMoney, monthLabel, monthRange } from "@/lib/format";
+import { reconcileTx, unreconcileTx } from "@/lib/bankReconcile";
 import type { BankStatement, BankTransaction, BankTxKind, Supplier } from "@/lib/types";
 
 interface ParsedTx {
@@ -203,30 +204,12 @@ export default function BanquePage() {
   async function reconcile(tx: BankTransaction) {
     const supplierId = pick[tx.id];
     if (!supplierId) return;
-    const amount = Math.abs(Number(tx.amount));
-    const { data: pay, error } = await supabase
-      .from("supplier_payments")
-      .insert({
-        supplier_id: supplierId,
-        pay_date: tx.op_date,
-        amount,
-        note: `Relevé — ${tx.label}`,
-        bank_transaction_id: tx.id,
-      })
-      .select()
-      .single();
-    if (error || !pay) {
+    const patch = await reconcileTx(supabase, tx, supplierId);
+    if (!patch) {
       showFlash(t("bank_parse_failed"));
       return;
     }
-    const patch = {
-      supplier_id: supplierId,
-      reconciled: true,
-      payment_id: (pay as { id: string }).id,
-      kind: "paiement_frs" as BankTxKind,
-    };
     setTxs((old) => old.map((x) => (x.id === tx.id ? { ...x, ...patch } : x)));
-    await supabase.from("bank_transactions").update(patch).eq("id", tx.id);
     setPick((p) => {
       const n = { ...p };
       delete n[tx.id];
@@ -235,10 +218,8 @@ export default function BanquePage() {
   }
 
   async function unreconcile(tx: BankTransaction) {
-    if (tx.payment_id) await supabase.from("supplier_payments").delete().eq("id", tx.payment_id);
-    const patch = { reconciled: false, payment_id: null, supplier_id: null };
+    const patch = await unreconcileTx(supabase, tx);
     setTxs((old) => old.map((x) => (x.id === tx.id ? { ...x, ...patch } : x)));
-    await supabase.from("bank_transactions").update(patch).eq("id", tx.id);
   }
 
   // ---------- Dérivés ----------

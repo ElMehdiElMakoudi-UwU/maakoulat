@@ -25,6 +25,7 @@ const emptyForm = {
   contact_name: "",
   notes: "",
   payment_terms_days: "0",
+  vat_rate: "",
   active: true,
 };
 type SupForm = typeof emptyForm;
@@ -142,6 +143,7 @@ export default function FournisseursPage() {
       contact_name: s.contact_name ?? "",
       notes: s.notes ?? "",
       payment_terms_days: String(s.payment_terms_days ?? 0),
+      vat_rate: s.vat_rate == null ? "" : String(Number(s.vat_rate)),
       active: s.active,
     });
     setEditingId(s.id);
@@ -158,6 +160,10 @@ export default function FournisseursPage() {
       notes: form.notes.trim() || null,
       payment_terms_days: Math.max(0, parseInt(form.payment_terms_days, 10) || 0),
       active: form.active,
+      // colonne ajoutée par migration_tva : n'est envoyée que si renseignée ou déjà présente
+      ...(form.vat_rate !== "" || suppliers.some((s) => s.id === editingId && "vat_rate" in s)
+        ? { vat_rate: form.vat_rate === "" ? null : Number(form.vat_rate) }
+        : {}),
     };
     if (editingId) {
       await supabase.from("suppliers").update(payload).eq("id", editingId);
@@ -331,7 +337,13 @@ export default function FournisseursPage() {
               <input className="input" type="number" min={0} step={1} value={form.payment_terms_days}
                 onChange={(e) => setForm({ ...form, payment_terms_days: e.target.value })} />
             </label>
-            <div className="hidden sm:block" />
+            <label className="flex flex-col gap-1 text-xs text-muted">
+              {t("supplier_vat_rate")}
+              <select className="input" value={form.vat_rate} onChange={(e) => setForm({ ...form, vat_rate: e.target.value })}>
+                <option value="">—</option>
+                {VAT_RATES.map((r) => <option key={r} value={r}>{r}%</option>)}
+              </select>
+            </label>
             <input className="input sm:col-span-2" placeholder={t("address")} value={form.address}
               onChange={(e) => setForm({ ...form, address: e.target.value })} />
             <textarea className="input sm:col-span-2" rows={2} placeholder={t("note")} value={form.notes}
@@ -422,8 +434,8 @@ function SupplierDetail({
   lang: "fr" | "ar";
 }) {
   const terms = supplier.payment_terms_days ?? 0;
-  const [mForm, setMForm] = useState<{ kind: MovementKind; date: string; due: string; amount: string; vat: string; note: string }>({
-    kind: "invoice", date: today(), due: addDays(today(), terms), amount: "", vat: "", note: "",
+  const [mForm, setMForm] = useState<{ kind: MovementKind; date: string; due: string; amount: string; note: string }>({
+    kind: "invoice", date: today(), due: addDays(today(), terms), amount: "", note: "",
   });
   const byInvoice = useMemo(() => new Map(allocated.map((r) => [r.invoice.id, r])), [allocated]);
   const overdue = allocated.filter((r) => r.status === "overdue").reduce((s, r) => s + r.remaining, 0);
@@ -457,7 +469,6 @@ function SupplierDetail({
     if (mForm.kind === "invoice") {
       await supabase.from("supplier_invoices").insert({
         supplier_id: supplier.id, inv_date: mForm.date, due_date: mForm.due || null, amount, note: mForm.note || null,
-        ...(mForm.vat !== "" ? { vat_rate: Number(mForm.vat) } : {}),
       });
     } else {
       await supabase.from("supplier_payments").insert({
@@ -560,7 +571,7 @@ function SupplierDetail({
       </p>
 
       {/* Nouveau mouvement */}
-      <div className="card no-print mb-4 grid gap-2 p-4 sm:grid-cols-3 xl:grid-cols-7">
+      <div className="card no-print mb-4 grid gap-2 p-4 sm:grid-cols-3 xl:grid-cols-6">
         <select className="input" value={mForm.kind} onChange={(e) => setMForm({ ...mForm, kind: e.target.value as MovementKind })}>
           <option value="invoice">{t("type_invoice")}</option>
           <option value="payment">{t("type_payment")}</option>
@@ -576,14 +587,6 @@ function SupplierDetail({
           <div className="hidden sm:block" />
         )}
         <input className="input" type="number" placeholder={t("amount")} value={mForm.amount} onChange={(e) => setMForm({ ...mForm, amount: e.target.value })} />
-        {mForm.kind === "invoice" ? (
-          <select className="input" title={t("vat")} value={mForm.vat} onChange={(e) => setMForm({ ...mForm, vat: e.target.value })}>
-            <option value="">{t("vat")} ?</option>
-            {VAT_RATES.map((r) => <option key={r} value={r}>{t("vat_amount")} {r}%</option>)}
-          </select>
-        ) : (
-          <div className="hidden xl:block" />
-        )}
         <input className="input" placeholder={t("note")} value={mForm.note} onChange={(e) => setMForm({ ...mForm, note: e.target.value })} />
         <button onClick={addMovement} className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-fg">+ {t("add")}</button>
       </div>
