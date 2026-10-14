@@ -7,6 +7,7 @@ import Link from "next/link";
 import { currentMonth, fmtMoney, monthLabel, today } from "@/lib/format";
 import { fetchAll } from "@/lib/demandData";
 import { reconcileTx, unreconcileTx } from "@/lib/bankReconcile";
+import TvaYearView from "@/components/TvaYearView";
 import type { BankTransaction, Supplier } from "@/lib/types";
 import {
   byRate, periodKey, periodMonths, periodRange, previousPeriod, round2, vatFromTTC,
@@ -23,6 +24,7 @@ interface Declaration {
 export default function TvaPage() {
   const { t, lang } = useI18n();
   const supabase = useMemo(() => createClient(), []);
+  const [view, setView] = useState<"period" | "year">("period");
   const [mode, setMode] = useState<PeriodMode>("month");
   const [month, setMonth] = useState(currentMonth());
   const period = periodKey(month, mode);
@@ -191,6 +193,12 @@ export default function TvaPage() {
   const fmtD = (d: string) =>
     new Intl.DateTimeFormat(lang === "ar" ? "ar-MA" : "fr-FR", { dateStyle: "medium" }).format(new Date(d + "T00:00:00"));
 
+  // Depuis la vue annuelle : ouvrir une période (premier mois de la période)
+  function openPeriod(key: string) {
+    setMonth(periodMonths(key)[0]);
+    setView("period");
+  }
+
   return (
     <div>
       <div className="no-print mb-5 flex flex-wrap items-end justify-between gap-3">
@@ -199,11 +207,20 @@ export default function TvaPage() {
           <p className="text-sm text-muted">{t("tva_hint")}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <div className="flex rounded-lg border border-border bg-surface p-0.5 text-sm">
+            {(["period", "year"] as const).map((v) => (
+              <button key={v} onClick={() => setView(v)}
+                className={`rounded-md px-3 py-1.5 font-medium ${view === v ? "bg-primary text-primary-fg" : "text-muted hover:text-foreground"}`}>
+                {t(v === "period" ? "tva_view_period" : "tva_view_year")}
+              </button>
+            ))}
+          </div>
           <select value={mode} onChange={(e) => setMode(e.target.value as PeriodMode)}
             className="rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-primary">
             <option value="month">{t("tva_monthly")}</option>
             <option value="quarter">{t("tva_quarterly")}</option>
           </select>
+          {view === "period" && (<>
           <input type="month" value={month} onChange={(e) => e.target.value && setMonth(e.target.value)}
             className="rounded-lg border border-border bg-surface px-3 py-2 outline-none focus:border-primary" />
           <button onClick={exportCsv} className="rounded-lg border border-border bg-surface px-3 py-2 text-sm font-medium hover:bg-background">
@@ -212,6 +229,7 @@ export default function TvaPage() {
           <button onClick={() => window.print()} className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-fg">
             🖨️ {t("print_pdf")}
           </button>
+          </>)}
         </div>
       </div>
 
@@ -219,7 +237,9 @@ export default function TvaPage() {
         <p className="no-print mb-4 rounded-lg bg-danger/10 px-3 py-2 text-sm text-danger">{t("tva_migration_missing")}</p>
       )}
 
-      {loading ? (
+      {view === "year" ? (
+        <TvaYearView mode={mode} onOpen={openPeriod} />
+      ) : loading ? (
         <p className="p-8 text-center text-muted">{t("loading")}</p>
       ) : (
         <div className="print-area space-y-5">

@@ -17,6 +17,7 @@ interface SaleRow {
   quantity: number;
   purchase_price: number;
   sale_price: number;
+  sale_date: string;
 }
 
 export default function DashboardPage() {
@@ -68,7 +69,7 @@ export default function DashboardPage() {
         supabase.from("products").select("id,name,category,vat_rate"),
         supabase
           .from("sales")
-          .select("product_id,seller_id,quantity,purchase_price,sale_price")
+          .select("product_id,seller_id,quantity,purchase_price,sale_price,sale_date")
           .gte("sale_date", start)
           .lt("sale_date", end),
         supabase.from("supplier_payments").select("amount").gte("pay_date", start).lt("pay_date", end),
@@ -127,6 +128,46 @@ export default function DashboardPage() {
   );
   const bonuses = useMemo(() => totalBonuses(sales, tiers), [sales, tiers]);
   const netResult = totals.profit - charges - commissions - bonuses;
+
+  // Seuil de rentabilité : coûts fixes (charges + primes) ÷ taux de marge sur
+  // coûts variables ((bénéfice brut − commissions) / CA). Exprimé en CA TTC,
+  // comme le CA affiché ; au seuil, le résultat net vaut 0.
+  const breakeven = useMemo(() => {
+    const fixed = charges + bonuses;
+    const rate = totals.ca > 0 ? (totals.profit - commissions) / totals.ca : 0;
+    const ca = rate > 0 ? fixed / rate : null;
+    const [y, m] = month.split("-").map(Number);
+    const daysInMonth = new Date(y, m, 0).getDate();
+    const cur = currentMonth();
+    const elapsed = month === cur ? new Date().getDate() : month < cur ? daysInMonth : 0;
+
+    // Jour où le CA cumulé franchit le seuil
+    let reachedOn: string | null = null;
+    if (ca !== null) {
+      const byDay = new Map<string, number>();
+      for (const s of sales)
+        byDay.set(s.sale_date, (byDay.get(s.sale_date) ?? 0) + s.quantity * ttc(s.sale_price, products[s.product_id]?.vat_rate ?? 0));
+      let cum = 0;
+      for (const d of [...byDay.keys()].sort()) {
+        cum += byDay.get(d)!;
+        if (cum >= ca) { reachedOn = d; break; }
+      }
+    }
+
+    // Projection au rythme actuel (mois en cours uniquement)
+    let projectedDay: number | null = null;
+    let dailyNeeded: number | null = null;
+    if (ca !== null && !reachedOn && month === cur && elapsed > 0) {
+      const avg = totals.ca / elapsed;
+      projectedDay = avg > 0 ? Math.ceil(ca / avg) : null;
+      const left = daysInMonth - elapsed;
+      dailyNeeded = left > 0 ? (ca - totals.ca) / left : null;
+    }
+    return {
+      fixed, rate, ca, reachedOn, projectedDay, dailyNeeded, daysInMonth,
+      isCurrent: month === cur, isPast: month < cur,
+    };
+  }, [charges, bonuses, commissions, totals, sales, products, month]);
 
   async function saveTargets() {
     const ca = parseFloat(caTargetInput) || 0;
@@ -209,6 +250,9 @@ export default function DashboardPage() {
               accent={netResult >= 0 ? "success" : "danger"}
             />
           </div>
+
+          {/* Seuil de rentabilité */}
+          <BreakevenCard be={breakeven} ca={totals.ca} month={month} lang={lang} t={t} />
 
           {/* Objectifs du mois */}
           <div className="card mb-5 p-4">
@@ -324,6 +368,96 @@ export default function DashboardPage() {
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+function BreakevenCard({
+  be,
+  ca,
+  month,
+  lang,
+  t,
+}: {
+  be: {
+    fixed: number; rate: number; ca: number | null; reachedOn: string | null;
+    projectedDay: number | null; dailyNeeded: number | null; daysInMonth: number;
+    isCurrent: boolean; isPast: boolean;
+  };
+  ca: number;
+  month: string;
+  lang: "fr" | "ar";
+  t: (k: string) => string;
+}) {
+  const dayLabel = (iso: string) =>
+    new Intl.DateTimeFormat(lang === "ar" ? "ar-MA" : "fr-FR", { day: "numeric", month: "long" }).format(new Date(iso + "T00:00:00"));
+
+  if (be.ca === null) {
+    return (
+      <div className="card mb-5 p-4">
+        <h2 className="mb-2 font-bold">⚖️ {t("breakeven")}</h2>
+        <p className="text-sm text-muted">{t("breakeven_no_margin")}</p>
+      </div>
+    );
+  }
+  const pct = be.ca > 0 ? ca / be.ca : 1;
+  const reached = ca >= be.ca;
+  const remaining = Math.max(0, be.ca - ca);
+  const safety = ca > 0 ? (ca - be.ca) / ca : 0;
+  const markerPct = Math.min(100, (be.ca / Math.max(ca, be.ca)) * 100);
+  const fillPct = Math.min(100, (ca / Math.max(ca, be.ca)) * 100);
+
+  let status: { text: string; tone: "success" | "danger" | "accent" } | null = null;
+  if (be.reachedOn) status = { text: `${t("breakeven_reached_on")} ${dayLabel(be.reachedOn)}`, tone: "success" };
+  else if (be.isCurrent && be.projectedDay !== null && be.projectedDay <= be.daysInMonth)
+    status = { text: `${t("breakeven_projected")} ${dayLabel(`${month}-${String(be.projectedDay).padStart(2, "0")}`)}`, tone: "accent" };
+  else if (be.isCurrent) status = { text: t("breakeven_out_of_reach"), tone: "danger" };
+  else if (be.isPast) status = { text: t("breakeven_not_reached"), tone: "danger" };
+
+  return (
+    <div className="card mb-5 p-4">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <h2 className="font-bold">⚖️ {t("breakeven")}</h2>
+        {status && (
+          <span className={`text-sm font-medium ${status.tone === "success" ? "text-success" : status.tone === "danger" ? "text-danger" : "text-accent"}`}>
+            {status.text}
+          </span>
+        )}
+      </div>
+
+      <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <div>
+          <div className="text-xs text-muted">{t("breakeven_ca")}</div>
+          <div className="text-lg font-bold text-primary">{fmtMoney(be.ca, lang)}</div>
+        </div>
+        <div>
+          <div className="text-xs text-muted">{t("breakeven_fixed")}</div>
+          <div className="text-lg font-bold">{fmtMoney(be.fixed, lang)}</div>
+        </div>
+        <div>
+          <div className="text-xs text-muted">{t("breakeven_rate")}</div>
+          <div className="text-lg font-bold">{fmtPct(be.rate, lang)}</div>
+        </div>
+        <div>
+          <div className="text-xs text-muted">{reached ? t("breakeven_safety") : t("breakeven_remaining")}</div>
+          <div className={`text-lg font-bold ${reached ? "text-success" : "text-danger"}`}>
+            {reached ? fmtPct(safety, lang) : fmtMoney(remaining, lang)}
+          </div>
+        </div>
+      </div>
+
+      <div className="relative h-3 w-full overflow-hidden rounded-full bg-background">
+        <div className="h-full rounded-full transition-all"
+          style={{ width: `${fillPct}%`, background: reached ? "var(--success)" : "var(--primary)" }} />
+        <div className="absolute top-0 h-full w-0.5 bg-foreground" style={{ insetInlineStart: `${markerPct}%` }} />
+      </div>
+      <div className="mt-1 flex flex-wrap justify-between gap-2 text-xs text-muted">
+        <span>{fmtMoney(ca, lang)} · {fmtPct(pct, lang)} {t("breakeven_of")}</span>
+        {!reached && be.dailyNeeded !== null && (
+          <span>{t("breakeven_daily_needed")} : <b className="text-foreground">{fmtMoney(be.dailyNeeded, lang)}</b></span>
+        )}
+      </div>
+      <p className="mt-3 text-xs text-muted">{t("breakeven_formula")}</p>
     </div>
   );
 }
