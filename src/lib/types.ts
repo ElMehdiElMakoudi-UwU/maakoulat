@@ -64,6 +64,22 @@ export interface SupplierPayment {
   note: string | null;
 }
 
+export type ChequeStatus = "pending" | "cashed" | "cancelled";
+
+// Chèque remis à un fournisseur (migration_cheques.sql), souvent post-daté
+export interface SupplierCheque {
+  id: string;
+  supplier_id: string;
+  cheque_number: string | null;
+  amount: number;
+  issue_date: string;
+  due_date: string; // date inscrite sur le chèque
+  status: ChequeStatus;
+  payment_id: string | null; // paiement fournisseur créé/rattaché quand le chèque est débité
+  note: string | null;
+  created_at?: string;
+}
+
 export interface Charge {
   id: string;
   label: string;

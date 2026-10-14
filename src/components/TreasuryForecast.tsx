@@ -13,7 +13,9 @@ import {
   buildForecast, forecastLows, groupByWeek, weekdayAverages, type ForecastOutflow,
 } from "@/lib/treasuryForecast";
 import { rateMap, totalCommission } from "@/lib/commissions";
-import type { BankStatement, CommissionRate, Seller, Supplier, SupplierInvoice, SupplierPayment } from "@/lib/types";
+import type {
+  BankStatement, CommissionRate, Seller, Supplier, SupplierCheque, SupplierInvoice, SupplierPayment,
+} from "@/lib/types";
 
 const HISTORY_DAYS = 56; // 8 semaines d'historique pour la moyenne des ventes
 const HORIZONS = [30, 60, 90] as const;
@@ -45,6 +47,7 @@ export default function TreasuryForecast() {
   const [openingSet, setOpeningSet] = useState(true);
   const [weekdayAvg, setWeekdayAvg] = useState<number[]>([0, 0, 0, 0, 0, 0, 0]);
   const [supplierOutflows, setSupplierOutflows] = useState<ForecastOutflow[]>([]);
+  const [chequeOutflows, setChequeOutflows] = useState<Omit<ForecastOutflow, "kind">[]>([]);
   const [charges, setCharges] = useState<ChargeRow[]>([]);
   const [commissionPerDay, setCommissionPerDay] = useState(0);
   const [lastStatement, setLastStatement] = useState<BankStatement | null>(null);
@@ -55,7 +58,7 @@ export default function TreasuryForecast() {
     const histFrom = addDays(todayStr, -HISTORY_DAYS);
     const salesFrom = histFrom < start ? histFrom : start;
     (async () => {
-      const [salesRes, supRes, invRes, payRes, chargeRes, setRes, bankRes, sellerRes, rateRes] = await Promise.all([
+      const [salesRes, supRes, invRes, payRes, chargeRes, setRes, bankRes, sellerRes, rateRes, chqRes] = await Promise.all([
         supabase.from("sales").select("sale_date,seller_id,product_id,quantity,sale_price,products(vat_rate,category)")
           .gte("sale_date", salesFrom).lte("sale_date", todayStr),
         supabase.from("suppliers").select("*"),
@@ -66,6 +69,8 @@ export default function TreasuryForecast() {
         supabase.from("bank_statements").select("*").order("period_end", { ascending: false, nullsFirst: false }).limit(1),
         supabase.from("sellers").select("id,kind"),
         supabase.from("commission_rates").select("category,rate"),
+        // Chèques en circulation (absents si migration_cheques.sql n'est pas appliquée)
+        supabase.from("supplier_cheques").select("*").eq("status", "pending"),
       ]);
       const saleRows = (salesRes.data as SaleRow[]) ?? [];
 
@@ -107,10 +112,16 @@ export default function TreasuryForecast() {
         (settings ? Number(settings.opening_balance) : 0) + salesMtd - payMtd - chargesMonth - commissionMtd
       );
 
-      // Échéances fournisseurs : reste à payer de chaque facture non soldée
+      // Échéances fournisseurs : reste à payer de chaque facture non soldée.
+      // Les chèques en circulation sortent à leur date et soldent d'abord les
+      // factures les plus anciennes (comme des paiements) pour ne pas compter deux fois.
       const names = new Map(suppliers.map((s) => [s.id, s.name]));
+      const cheques = chqRes.error ? [] : ((chqRes.data as SupplierCheque[]) ?? []);
+      const chequeAsPayments: SupplierPayment[] = cheques.map((c) => ({
+        id: c.id, supplier_id: c.supplier_id, pay_date: c.due_date, amount: Number(c.amount), note: null,
+      }));
       setSupplierOutflows(
-        allocateInvoices(suppliers, (invRes.data as SupplierInvoice[]) ?? [], payments, todayStr)
+        allocateInvoices(suppliers, (invRes.data as SupplierInvoice[]) ?? [], [...payments, ...chequeAsPayments], todayStr)
           .filter((r) => r.status !== "paid")
           .map((r) => ({
             date: r.due_date,
@@ -119,6 +130,11 @@ export default function TreasuryForecast() {
             label: names.get(r.supplier_id) ?? "—",
           }))
       );
+      setChequeOutflows(cheques.map((c) => ({
+        date: c.due_date,
+        amount: Number(c.amount),
+        label: `${names.get(c.supplier_id) ?? "—"}${c.cheque_number ? ` · n° ${c.cheque_number}` : ""}`,
+      })));
       setCharges(chargeRows);
       setLastStatement(((bankRes.data as BankStatement[]) ?? [])[0] ?? null);
       setLoading(false);
@@ -129,7 +145,10 @@ export default function TreasuryForecast() {
   const outflows = useMemo<ForecastOutflow[]>(() => {
     const factor = Math.max(0, parseFloat(salesPct) || 0) / 100;
     const end = addDays(todayStr, horizon);
-    const rows: ForecastOutflow[] = [...supplierOutflows];
+    const rows: ForecastOutflow[] = [
+      ...supplierOutflows,
+      ...chequeOutflows.map((c) => ({ ...c, kind: "supplier" as const, label: `${c.label} · ${t("fc_cheque")}` })),
+    ];
     let [y, m] = todayStr.split("-").map(Number);
     for (;;) {
       m++;
@@ -146,7 +165,7 @@ export default function TreasuryForecast() {
       if (amount > 0) rows.push({ date, amount, kind: "charges", label: t("total_charges") });
     }
     return rows;
-  }, [supplierOutflows, charges, commissionPerDay, salesPct, horizon, todayStr, t]);
+  }, [supplierOutflows, chequeOutflows, charges, commissionPerDay, salesPct, horizon, todayStr, t]);
 
   const startBalance =
     balanceOverride !== null && balanceOverride.trim() !== ""
