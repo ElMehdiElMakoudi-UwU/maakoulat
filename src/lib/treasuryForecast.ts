@@ -6,11 +6,12 @@ import { addDays } from "./supplierDues";
 // • échéances fournisseurs : reste à payer de chaque facture, à sa date d'échéance
 //   (les factures déjà en retard sont imputées au premier jour)
 // • charges : imputées le 1er de chaque mois (comme sur la vue mensuelle)
+// • crédits bancaires : chaque mensualité à sa date d'échéance
 
 export interface ForecastOutflow {
   date: string; // YYYY-MM-DD
   amount: number;
-  kind: "supplier" | "charges";
+  kind: "supplier" | "charges" | "loan";
   label: string;
 }
 
@@ -19,6 +20,7 @@ export interface ForecastDay {
   inflow: number;
   supplierOut: number;
   chargesOut: number;
+  loanOut: number;
   balance: number;
 }
 
@@ -28,6 +30,7 @@ export interface ForecastWeek {
   inflow: number;
   supplierOut: number;
   chargesOut: number;
+  loanOut: number;
   endBalance: number;
 }
 
@@ -65,9 +68,10 @@ export function buildForecast(opts: {
   const first = addDays(today, 1);
   const supplierByDate = new Map<string, number>();
   const chargesByDate = new Map<string, number>();
+  const loanByDate = new Map<string, number>();
   for (const o of outflows) {
     const date = o.date < first ? first : o.date; // retard → dû immédiatement
-    const map = o.kind === "supplier" ? supplierByDate : chargesByDate;
+    const map = o.kind === "supplier" ? supplierByDate : o.kind === "loan" ? loanByDate : chargesByDate;
     map.set(date, (map.get(date) ?? 0) + o.amount);
   }
 
@@ -78,8 +82,9 @@ export function buildForecast(opts: {
     const inflow = (weekdayAvg[weekday(date)] ?? 0) * salesFactor;
     const supplierOut = supplierByDate.get(date) ?? 0;
     const chargesOut = chargesByDate.get(date) ?? 0;
-    bal += inflow - supplierOut - chargesOut;
-    days.push({ date, inflow, supplierOut, chargesOut, balance: bal });
+    const loanOut = loanByDate.get(date) ?? 0;
+    bal += inflow - supplierOut - chargesOut - loanOut;
+    days.push({ date, inflow, supplierOut, chargesOut, loanOut, balance: bal });
   }
   return days;
 }
@@ -95,6 +100,7 @@ export function groupByWeek(days: ForecastDay[]): ForecastWeek[] {
       inflow: chunk.reduce((s, d) => s + d.inflow, 0),
       supplierOut: chunk.reduce((s, d) => s + d.supplierOut, 0),
       chargesOut: chunk.reduce((s, d) => s + d.chargesOut, 0),
+      loanOut: chunk.reduce((s, d) => s + d.loanOut, 0),
       endBalance: chunk[chunk.length - 1].balance,
     });
   }

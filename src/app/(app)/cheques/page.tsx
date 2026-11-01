@@ -11,7 +11,8 @@ import {
   DEFAULT_PLANNER_SETTINGS, PLANNER_SETTINGS_KEY, analyseCheques, lastChequeDate, rescheduleDate, simulate, suggestDate,
   workingDaysInMonth, type ChequePlannerSettings, type PlanInput, type PlannedCheque,
 } from "@/lib/chequePlanner";
-import type { Seller, Supplier, SupplierCheque, SupplierPayment } from "@/lib/types";
+import { upcomingEcheances, type LoanEcheance } from "@/lib/loans";
+import type { BankLoan, Seller, Supplier, SupplierCheque, SupplierPayment } from "@/lib/types";
 
 const HISTORY_MONTHS = 3; // mois complets utilisés pour le CA/J
 const WEEK_ORDER = [1, 2, 3, 4, 5, 6, 0]; // lundi → dimanche
@@ -46,6 +47,7 @@ export default function ChequesPage() {
   const [sellers, setSellers] = useState<Seller[]>([]);
   const [salesByMonth, setSalesByMonth] = useState<Record<string, Record<string, number>>>({});
   const [cheques, setCheques] = useState<SupplierCheque[]>([]);
+  const [loans, setLoans] = useState<BankLoan[]>([]);
   const [settings, setSettings] = useState<ChequePlannerSettings>(DEFAULT_PLANNER_SETTINGS);
   const [settingsSaved, setSettingsSaved] = useState(false);
   const [startCash, setStartCash] = useState("0");
@@ -67,7 +69,7 @@ export default function ChequesPage() {
   useEffect(() => {
     const from = `${shiftMonth(currentMonth(), -(HISTORY_MONTHS + 3))}-01`;
     (async () => {
-      const [supRes, sellerRes, setRes, sales] = await Promise.all([
+      const [supRes, sellerRes, setRes, sales, , loanRes] = await Promise.all([
         supabase.from("suppliers").select("*").order("sort_order"),
         supabase.from("sellers").select("*").order("sort_order"),
         supabase.from("app_settings").select("value").eq("key", PLANNER_SETTINGS_KEY).maybeSingle(),
@@ -75,7 +77,10 @@ export default function ChequesPage() {
           supabase.from("sales").select("sale_date,seller_id,quantity,sale_price,products(vat_rate)")
             .gte("sale_date", from).lte("sale_date", todayStr).order("id").range(a, b)),
         loadCheques(),
+        supabase.from("bank_loans").select("*"),
       ]);
+      // Table absente (migration_loans.sql non exécutée) : aucun crédit
+      setLoans(loanRes.error ? [] : ((loanRes.data as BankLoan[]) ?? []));
       const sellerRows = ((sellerRes.data as Seller[]) ?? []).filter((s) => s.active);
       setSuppliers(((supRes.data as Supplier[]) ?? []).filter((s) => s.active));
       setSellers(sellerRows);
@@ -127,14 +132,32 @@ export default function ChequesPage() {
     () => pending.map((c) => ({ id: c.id, date: c.due_date, amount: Number(c.amount) })),
     [pending]
   );
+  // Échéances de crédit : débits fixes du matin, comme un chèque, mais non déplaçables
+  const loanEcheances = useMemo(() => upcomingEcheances(loans, todayStr), [loans, todayStr]);
+  const fixed = useMemo<PlannedCheque[]>(
+    () => loanEcheances.map((e) => ({ id: `loan:${e.loanId}:${e.n}`, date: e.date, amount: e.amount })),
+    [loanEcheances]
+  );
   const input: PlanInput = useMemo(
-    () => ({ today: todayStr, startCash: parseFloat(startCash) || 0, dailyRate, restDays: settings.restDays, cheques: planned }),
-    [todayStr, startCash, dailyRate, settings.restDays, planned]
+    () => ({ today: todayStr, startCash: parseFloat(startCash) || 0, dailyRate, restDays: settings.restDays, cheques: planned, fixed }),
+    [todayStr, startCash, dailyRate, settings.restDays, planned, fixed]
   );
 
   const risks = useMemo(() => analyseCheques(input, buffer), [input, buffer]);
   const atRisk = pending.filter((c) => (risks.get(c.id)?.short ?? 0) > 0.005);
 
+  // Échéances de crédit jusqu'au dernier chèque, et celles qui font passer le solde sous la marge
+  const horizon = lastChequeDate(planned, todayStr);
+  const loansInHorizon = loanEcheances.filter((e) => e.date <= horizon);
+  const loanRisks = useMemo(() => {
+    if (!loansInHorizon.length) return [] as LoanEcheance[];
+    const byDate = new Map(simulate(input, horizon).map((d) => [d.date, d]));
+    return loansInHorizon.filter((e) => (byDate.get(e.date)?.checkpoint ?? 0) < buffer - 0.005);
+  }, [input, horizon, loansInHorizon, buffer]);
+  const loanName = useMemo(
+    () => new Map(loans.map((l) => [l.id, [l.bank, l.label].filter(Boolean).join(" — ") || "—"])),
+    [loans]
+  );
   // Suggestion pour le chèque en préparation
   const amount = parseFloat(form.amount) || 0;
   const suggestion = useMemo(
@@ -158,11 +181,12 @@ export default function ChequesPage() {
     const last = addDays(`${shiftMonth(calMonth, 1)}-01`, -1);
     const sim = last >= todayStr ? simulate(input, last) : [];
     const byDate = new Map(sim.map((d) => [d.date, d]));
-    const cells: ({ date: string; balance: number | null; rest: boolean } | null)[] = [];
+    const cells: ({ date: string; balance: number | null; checkpoint: number | null; rest: boolean } | null)[] = [];
     const lead = WEEK_ORDER.indexOf(weekday(first));
     for (let i = 0; i < lead; i++) cells.push(null);
     for (let d = first; d <= last; d = addDays(d, 1)) {
-      cells.push({ date: d, balance: byDate.get(d)?.balance ?? null, rest: settings.restDays.includes(weekday(d)) });
+      const day = byDate.get(d);
+      cells.push({ date: d, balance: day?.balance ?? null, checkpoint: day?.checkpoint ?? null, rest: settings.restDays.includes(weekday(d)) });
     }
     return cells;
   }, [calMonth, input, todayStr, settings.restDays]);
@@ -176,6 +200,11 @@ export default function ChequesPage() {
     }
     return m;
   }, [pending, todayStr]);
+  const loansByDate = useMemo(() => {
+    const m = new Map<string, LoanEcheance[]>();
+    for (const e of loanEcheances) m.set(e.date, [...(m.get(e.date) ?? []), e]);
+    return m;
+  }, [loanEcheances]);
 
   // ---------- Actions ----------
   async function saveSettings(next = settings) {
@@ -464,6 +493,21 @@ export default function ChequesPage() {
         </div>
       </div>
 
+      {/* Échéances de crédit prises en compte */}
+      {loansInHorizon.length > 0 && (
+        <div className="mb-3 rounded-xl border border-accent/40 bg-accent/5 px-4 py-3 text-sm">
+          <span className="font-semibold">🏧 {t("chq_loans_included")}</span>
+          <span className="text-muted">
+            {" "}· {loansInHorizon.length} × · {fmtMoney(loansInHorizon.reduce((a, e) => a + e.amount, 0), lang)} {t("chq_loans_until_last")}
+          </span>
+          {loanRisks.length > 0 && (
+            <div className="mt-1 font-semibold text-danger">
+              ⚠ {loanRisks.length} {t("chq_loan_risk_banner")} · <bdi dir="ltr">{fmtDate(loanRisks[0].date)}</bdi>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Alerte calendrier */}
       {atRisk.length > 0 ? (
         <div className="mb-5 rounded-xl border border-danger/40 bg-danger/5 px-4 py-3 text-sm">
@@ -495,7 +539,9 @@ export default function ChequesPage() {
               if (!cell) return <div key={`e${i}`} />;
               const list = chequesByDate.get(cell.date) ?? [];
               const isSuggested = suggestion?.date === cell.date && amount > 0;
-              const risky = list.some((c) => (risks.get(c.id)?.short ?? 0) > 0.005);
+              const loanList = loansByDate.get(cell.date) ?? [];
+              const risky = list.some((c) => (risks.get(c.id)?.short ?? 0) > 0.005)
+                || (loanList.length > 0 && cell.checkpoint !== null && cell.checkpoint < buffer - 0.005);
               return (
                 <div
                   key={cell.date}
@@ -517,6 +563,13 @@ export default function ChequesPage() {
                     <div key={c.id} className="mt-1 truncate rounded bg-primary/10 px-1 py-0.5" title={supplierName.get(c.supplier_id) ?? ""}>
                       <span className="font-medium">{new Intl.NumberFormat("fr").format(Number(c.amount))}</span>{" "}
                       <span className="text-muted">{supplierName.get(c.supplier_id) ?? "—"}</span>
+                    </div>
+                  ))}
+                  {loanList.map((e) => (
+                    <div key={`${e.loanId}-${e.n}`} className="mt-1 truncate rounded bg-accent/15 px-1 py-0.5"
+                      title={`${t("chq_loan_tag")} · ${loanName.get(e.loanId) ?? ""} (${e.n})`}>
+                      <span className="font-medium">{new Intl.NumberFormat("fr").format(e.amount)}</span>{" "}
+                      <span className="text-muted">🏧 {loanName.get(e.loanId) ?? t("chq_loan_tag")}</span>
                     </div>
                   ))}
                   {isSuggested && (

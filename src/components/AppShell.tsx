@@ -38,6 +38,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: "/tresorerie", key: "nav_treasury", icon: "💰" },
       { href: "/cheques", key: "nav_cheques", icon: "✍️" },
+      { href: "/credits", key: "nav_loans", icon: "🏧" },
       { href: "/banque", key: "nav_bank", icon: "🏦" },
       { href: "/charges", key: "nav_charges", icon: "💸" },
       { href: "/tva", key: "nav_tva", icon: "🏛️" },
