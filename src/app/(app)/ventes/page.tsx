@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/lib/i18n";
@@ -33,6 +33,11 @@ function VentesPage() {
   const [dupOpen, setDupOpen] = useState(false);
   const [dupDate, setDupDate] = useState<string>("");
   const [msg, setMsg] = useState<string>("");
+  const [savedCount, setSavedCount] = useState(0);
+  const [moveOpen, setMoveOpen] = useState(false);
+  const [moveDate, setMoveDate] = useState<string>("");
+  const [busy, setBusy] = useState(false);
+  const pendingMsg = useRef("");
 
   // Vendeurs
   useEffect(() => {
@@ -50,7 +55,9 @@ function VentesPage() {
   useEffect(() => {
     if (!sellerId) return;
     setLoading(true);
-    setMsg("");
+    setMsg(pendingMsg.current);
+    pendingMsg.current = "";
+    setMoveOpen(false);
     (async () => {
       const [{ data: prods }, { data: sales }] = await Promise.all([
         supabase.from("products").select("*").eq("active", true).order("sort_order"),
@@ -62,6 +69,7 @@ function VentesPage() {
         if (s.quantity) q[s.product_id] = String(s.quantity);
       }
       setQty(q);
+      setSavedCount(Object.keys(q).length);
       setLoading(false);
     })();
   }, [supabase, sellerId, date]);
@@ -149,11 +157,56 @@ function VentesPage() {
       }));
     const zeroIds = products.filter((p) => !((parseFloat(qty[p.id] || "0") || 0) > 0)).map((p) => p.id);
     if (toUpsert.length) await supabase.from("sales").upsert(toUpsert, { onConflict: "product_id,seller_id,sale_date" });
-    if (zeroIds.length) await supabase.from("sales").delete().eq("sale_date", date).in("product_id", zeroIds);
+    if (zeroIds.length) await supabase.from("sales").delete().eq("seller_id", sellerId).eq("sale_date", date).in("product_id", zeroIds);
+    setSavedCount(toUpsert.length);
     setSaving(false);
     setSavedAt(Date.now());
     setMsg("");
     setTimeout(() => setSavedAt(null), 2500);
+  }
+
+  // Déplace les ventes enregistrées du jour vers une autre date (fusion si la date cible a déjà des ventes)
+  async function moveDay() {
+    if (!sellerId || !moveDate) return;
+    if (moveDate === date) { setMsg(t("move_same_date")); return; }
+    const [{ data: src }, { data: dst }] = await Promise.all([
+      supabase.from("sales").select("id, product_id, quantity").eq("seller_id", sellerId).eq("sale_date", date),
+      supabase.from("sales").select("id, product_id, quantity").eq("seller_id", sellerId).eq("sale_date", moveDate),
+    ]);
+    type Row = { id: string; product_id: string; quantity: number };
+    const srcRows = (src as Row[]) ?? [];
+    const dstRows = (dst as Row[]) ?? [];
+    if (!srcRows.length) { setMsg(t("copy_empty")); return; }
+    if (dstRows.length && !confirm(t("move_confirm_merge").replace("{date}", moveDate))) return;
+    setBusy(true);
+    const dstByProduct = new Map(dstRows.map((r) => [r.product_id, r]));
+    const plain = srcRows.filter((r) => !dstByProduct.has(r.product_id));
+    const merged = srcRows.filter((r) => dstByProduct.has(r.product_id));
+    let error = null;
+    for (const r of merged) {
+      const d = dstByProduct.get(r.product_id)!;
+      const res = await supabase.from("sales").update({ quantity: Number(d.quantity) + Number(r.quantity) }).eq("id", d.id);
+      error ||= res.error;
+    }
+    if (merged.length) error ||= (await supabase.from("sales").delete().in("id", merged.map((r) => r.id))).error;
+    if (plain.length) error ||= (await supabase.from("sales").update({ sale_date: moveDate }).in("id", plain.map((r) => r.id))).error;
+    setBusy(false);
+    if (error) { setMsg(error.message); return; }
+    setMoveOpen(false);
+    pendingMsg.current = t("move_done").replace("{date}", moveDate);
+    setDate(moveDate);
+  }
+
+  async function deleteDay() {
+    if (!sellerId) return;
+    if (!confirm(t("delete_day_confirm").replace("{seller}", seller?.name ?? "").replace("{date}", date))) return;
+    setBusy(true);
+    const { error } = await supabase.from("sales").delete().eq("seller_id", sellerId).eq("sale_date", date);
+    setBusy(false);
+    if (error) { setMsg(error.message); return; }
+    setQty({});
+    setSavedCount(0);
+    setMsg(t("delete_day_done"));
   }
 
   return (
@@ -207,6 +260,18 @@ function VentesPage() {
           className="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm hover:bg-background">
           📋 {t("duplicate_day")}
         </button>
+        {savedCount > 0 && (
+          <>
+            <button onClick={() => { setMoveOpen((o) => !o); setMoveDate(""); }} disabled={busy}
+              className="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm hover:bg-background disabled:opacity-50">
+              📅 {t("move_day")}
+            </button>
+            <button onClick={deleteDay} disabled={busy}
+              className="rounded-lg border border-danger/40 bg-surface px-3 py-1.5 text-sm text-danger hover:bg-danger/10 disabled:opacity-50">
+              🗑 {t("delete_day")}
+            </button>
+          </>
+        )}
         <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t("search")}
           className="ms-auto w-40 rounded-lg border border-border bg-surface px-3 py-1.5 text-sm outline-none focus:border-primary sm:w-56" />
       </div>
@@ -219,6 +284,18 @@ function VentesPage() {
           <button onClick={copyFrom} disabled={!dupDate}
             className="rounded-lg bg-primary px-4 py-1.5 text-sm font-semibold text-primary-fg disabled:opacity-50">
             {t("copy")}
+          </button>
+        </div>
+      )}
+
+      {moveOpen && (
+        <div className="card mb-3 flex flex-wrap items-center gap-2 p-3">
+          <span className="text-sm">{t("move_to_date")}</span>
+          <input type="date" value={moveDate} onChange={(e) => setMoveDate(e.target.value)}
+            className="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm" />
+          <button onClick={moveDay} disabled={!moveDate || busy}
+            className="rounded-lg bg-primary px-4 py-1.5 text-sm font-semibold text-primary-fg disabled:opacity-50">
+            {t("move")}
           </button>
         </div>
       )}
