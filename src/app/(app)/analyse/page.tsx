@@ -14,6 +14,7 @@ import {
   Legend,
 } from "recharts";
 import { createClient } from "@/lib/supabase/client";
+import { fetchAll } from "@/lib/demandData";
 import { useI18n } from "@/lib/i18n";
 import { currentMonth, fmtMoney, fmtNum, fmtPct, monthLabel, monthRange, ttc } from "@/lib/format";
 import { SERIES, SELLER_HUES, STATUS, INK } from "@/lib/chartColors";
@@ -56,20 +57,25 @@ export default function AnalysePage() {
     const start = monthRange(months[0]).start;
     const end = monthRange(months[months.length - 1]).end;
     (async () => {
-      const [sellersRes, prodRes, salesRes] = await Promise.all([
+      // 6 mois de ventes dépassent la limite de 1000 lignes de Supabase → pagination
+      const [sellersRes, prods, salesRows] = await Promise.all([
         supabase.from("sellers").select("*").order("sort_order"),
-        supabase.from("products").select("*"),
-        supabase
-          .from("sales")
-          .select("product_id,seller_id,sale_date,quantity,purchase_price,sale_price")
-          .gte("sale_date", start)
-          .lt("sale_date", end),
+        fetchAll<Product>((a, b) => supabase.from("products").select("*").order("id").range(a, b)),
+        fetchAll<SaleRow>((a, b) =>
+          supabase
+            .from("sales")
+            .select("product_id,seller_id,sale_date,quantity,purchase_price,sale_price")
+            .gte("sale_date", start)
+            .lt("sale_date", end)
+            .order("id")
+            .range(a, b)
+        ),
       ]);
       setSellers((sellersRes.data as Seller[]) ?? []);
       const pmap: Record<string, Product> = {};
-      for (const p of (prodRes.data as Product[]) ?? []) pmap[p.id] = p;
+      for (const p of prods) pmap[p.id] = p;
       setProducts(pmap);
-      setSales((salesRes.data as SaleRow[]) ?? []);
+      setSales(salesRows);
       setLoading(false);
     })();
   }, [supabase, months]);

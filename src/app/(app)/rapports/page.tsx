@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { fetchAll } from "@/lib/demandData";
 import { useI18n } from "@/lib/i18n";
 import { currentMonth, fmtMoney, fmtNum, fmtPct, monthLabel, monthRange, ttc } from "@/lib/format";
 import type { Seller } from "@/lib/types";
@@ -23,15 +24,16 @@ export default function RapportsPage() {
     setLoading(true);
     const { start, end } = monthRange(month);
     (async () => {
-      const [selRes, prodRes, salesRes] = await Promise.all([
+      const [selRes, prods, salesRows] = await Promise.all([
         supabase.from("sellers").select("*").order("sort_order"),
-        supabase.from("products").select("id,name,category,vat_rate"),
-        supabase.from("sales").select("product_id,seller_id,sale_date,quantity,purchase_price,sale_price")
-          .gte("sale_date", start).lt("sale_date", end),
+        fetchAll<Prod>((a, b) => supabase.from("products").select("id,name,category,vat_rate").order("id").range(a, b)),
+        fetchAll<Sale>((a, b) =>
+          supabase.from("sales").select("product_id,seller_id,sale_date,quantity,purchase_price,sale_price")
+            .gte("sale_date", start).lt("sale_date", end).order("id").range(a, b)),
       ]);
       setSellers((selRes.data as Seller[]) ?? []);
-      setProducts((prodRes.data as Prod[]) ?? []);
-      setSales((salesRes.data as Sale[]) ?? []);
+      setProducts(prods);
+      setSales(salesRows);
       setLoading(false);
     })();
   }, [supabase, month]);

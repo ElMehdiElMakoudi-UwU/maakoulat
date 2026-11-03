@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import { fetchAll } from "@/lib/demandData";
 import { useI18n } from "@/lib/i18n";
 import { currentMonth, fmtMoney, fmtNum, monthLabel, monthRange, ttc } from "@/lib/format";
 import type { Seller } from "@/lib/types";
@@ -29,16 +30,20 @@ export default function JournalPage() {
     setLoading(true);
     const { start, end } = monthRange(month);
     (async () => {
-      const [sellersRes, salesRes] = await Promise.all([
+      const [sellersRes, salesRows] = await Promise.all([
         supabase.from("sellers").select("*").order("sort_order"),
-        supabase
-          .from("sales")
-          .select("sale_date,seller_id,quantity,purchase_price,sale_price,products(vat_rate)")
-          .gte("sale_date", start)
-          .lt("sale_date", end),
+        fetchAll<Row>((a, b) =>
+          supabase
+            .from("sales")
+            .select("sale_date,seller_id,quantity,purchase_price,sale_price,products(vat_rate)")
+            .gte("sale_date", start)
+            .lt("sale_date", end)
+            .order("id")
+            .range(a, b)
+        ),
       ]);
       setSellers((sellersRes.data as Seller[]) ?? []);
-      setRows((salesRes.data as Row[]) ?? []);
+      setRows(salesRows);
       setLoading(false);
     })();
   }, [supabase, month]);
