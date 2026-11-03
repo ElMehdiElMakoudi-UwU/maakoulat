@@ -284,3 +284,45 @@ export interface DemandCoefficient {
   seller_kind: SellerKind | null;
   coefficient: number;
 }
+
+// Flotte de véhicules (migration_fleet.sql)
+export type FuelType = "diesel" | "essence";
+export type VehicleStatus = "active" | "inactive";
+
+export interface Vehicle {
+  id: string;
+  name: string;
+  plate: string;
+  model: string | null;
+  year: number | null;
+  fuel_type: FuelType;
+  consumption_l100: number;
+  mileage_km: number;
+  driver: string | null;
+  insurer: string | null;
+  insurance_policy: string | null;
+  insurance_expiry: string | null;
+  insurance_cost: number; // prime annuelle
+  vignette_expiry: string | null;
+  vignette_cost: number; // annuel
+  inspection_expiry: string | null; // visite technique
+  status: VehicleStatus;
+  note: string | null;
+  created_at?: string;
+}
+
+export type VehicleLogKind = "fuel" | "oil" | "tires" | "brakes" | "repair" | "other";
+
+export interface VehicleLog {
+  id: string;
+  vehicle_id: string;
+  kind: VehicleLogKind;
+  log_date: string;
+  mileage_km: number | null;
+  cost: number;
+  liters: number | null;
+  next_due_date: string | null;
+  next_due_km: number | null;
+  note: string | null;
+  created_at?: string;
+}
