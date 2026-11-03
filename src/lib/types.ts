@@ -306,6 +306,9 @@ export interface Vehicle {
   vignette_expiry: string | null;
   vignette_cost: number; // annuel
   inspection_expiry: string | null; // visite technique
+  onssa_number: string | null; // autorisation sanitaire ONSSA (annuelle)
+  onssa_expiry: string | null;
+  onssa_cost: number;
   status: VehicleStatus;
   note: string | null;
   created_at?: string;

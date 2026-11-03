@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/lib/i18n";
 import { fmtDays, fmtMoney, fmtNum, today } from "@/lib/format";
-import { buildReminders, currentMileage, vehicleStats, type Reminder } from "@/lib/fleet";
+import { ADMIN_KINDS, buildReminders, currentMileage, vehicleStats, type Reminder } from "@/lib/fleet";
 import TripPlanner from "@/components/fleet/TripPlanner";
 import type { Vehicle, VehicleLog, VehicleLogKind } from "@/lib/types";
 
@@ -13,13 +13,14 @@ const fmtDate = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}/${d.slice(0, 
 const LOG_KINDS: VehicleLogKind[] = ["fuel", "oil", "tires", "brakes", "repair", "other"];
 const KIND_ICON: Record<string, string> = {
   fuel: "⛽", oil: "🛢️", tires: "🛞", brakes: "🛑", repair: "🔧", other: "📌",
-  insurance: "🛡️", vignette: "🏷️", inspection: "🔍",
+  insurance: "🛡️", vignette: "🏷️", inspection: "🔍", onssa: "🧪",
 };
 
 const EMPTY_VEHICLE = {
   name: "", plate: "", model: "", year: "", fuel_type: "diesel", consumption_l100: "10", mileage_km: "",
   driver: "", insurer: "", insurance_policy: "", insurance_expiry: "", insurance_cost: "",
-  vignette_expiry: "", vignette_cost: "", inspection_expiry: "", note: "",
+  vignette_expiry: "", vignette_cost: "", inspection_expiry: "", onssa_number: "", onssa_expiry: "", onssa_cost: "",
+  note: "",
 };
 
 const EMPTY_LOG = {
@@ -108,6 +109,8 @@ export default function FlottePage() {
       insurance_policy: vForm.insurance_policy.trim() || null, insurance_expiry: vForm.insurance_expiry || null,
       insurance_cost: num(vForm.insurance_cost), vignette_expiry: vForm.vignette_expiry || null,
       vignette_cost: num(vForm.vignette_cost), inspection_expiry: vForm.inspection_expiry || null,
+      onssa_number: vForm.onssa_number.trim() || null, onssa_expiry: vForm.onssa_expiry || null,
+      onssa_cost: num(vForm.onssa_cost),
       note: vForm.note.trim() || null,
     };
     if (editingVehicle) await supabase.from("vehicles").update(row).eq("id", editingVehicle);
@@ -126,7 +129,9 @@ export default function FlottePage() {
       consumption_l100: String(v.consumption_l100), mileage_km: String(v.mileage_km), driver: v.driver ?? "",
       insurer: v.insurer ?? "", insurance_policy: v.insurance_policy ?? "", insurance_expiry: v.insurance_expiry ?? "",
       insurance_cost: String(v.insurance_cost || ""), vignette_expiry: v.vignette_expiry ?? "",
-      vignette_cost: String(v.vignette_cost || ""), inspection_expiry: v.inspection_expiry ?? "", note: v.note ?? "",
+      vignette_cost: String(v.vignette_cost || ""), inspection_expiry: v.inspection_expiry ?? "",
+      onssa_number: v.onssa_number ?? "", onssa_expiry: v.onssa_expiry ?? "", onssa_cost: String(v.onssa_cost || ""),
+      note: v.note ?? "",
     });
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -188,13 +193,13 @@ export default function FlottePage() {
   function handleReminder(r: Reminder) {
     const v = byId.get(r.vehicleId);
     if (!v) return;
-    if (r.kind === "insurance" || r.kind === "vignette" || r.kind === "inspection") {
+    if (ADMIN_KINDS.includes(r.kind)) {
       setTab("vehicles");
       editVehicle(v);
     } else {
       setTab("logs");
       setEditingLog(null);
-      setLForm({ ...EMPTY_LOG, vehicle_id: v.id, kind: r.kind, log_date: todayStr, mileage_km: String(currentMileage(v, logs)) });
+      setLForm({ ...EMPTY_LOG, vehicle_id: v.id, kind: r.kind as VehicleLogKind, log_date: todayStr, mileage_km: String(currentMileage(v, logs)) });
       window.scrollTo({ top: 0, behavior: "smooth" });
     }
   }
@@ -251,11 +256,12 @@ export default function FlottePage() {
               <div key={i} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2 text-sm">
                 <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${r.level === "overdue" ? "bg-danger" : "bg-accent"}`} />
                 <span>{KIND_ICON[r.kind]} <b>{t(`fl_kind_${r.kind}`)}</b></span>
+                {r.step != null && <StepBadge step={r.step} />}
                 <span className="text-muted">{vehicleName(r.vehicleId)}</span>
                 <span className={r.level === "overdue" ? "font-semibold text-danger" : "text-accent"}>{reminderText(r)}</span>
                 {r.dueDate && <span className="text-xs text-muted"><bdi dir="ltr">{fmtDate(r.dueDate)}</bdi></span>}
                 <button onClick={() => handleReminder(r)} className="ms-auto text-xs text-primary hover:underline">
-                  {r.kind === "insurance" || r.kind === "vignette" || r.kind === "inspection" ? t("fl_renew") : t("fl_record_done")}
+                  {ADMIN_KINDS.includes(r.kind) ? t("fl_renew") : t("fl_record_done")}
                 </button>
               </div>
             ))}
@@ -300,7 +306,7 @@ export default function FlottePage() {
                 <Field label={t("fl_mileage")}><input type="number" min={0} className="input" value={vForm.mileage_km} onChange={(e) => setVForm({ ...vForm, mileage_km: e.target.value })} /></Field>
                 <Field label={t("fl_driver")}><input className="input" value={vForm.driver} onChange={(e) => setVForm({ ...vForm, driver: e.target.value })} /></Field>
 
-                <div className="mt-2 text-sm font-semibold text-muted sm:col-span-2 lg:col-span-4">🛡️ {t("fl_kind_insurance")} · 🏷️ {t("fl_kind_vignette")} · 🔍 {t("fl_kind_inspection")}</div>
+                <div className="mt-2 text-sm font-semibold text-muted sm:col-span-2 lg:col-span-4">🛡️ {t("fl_kind_insurance")} · 🏷️ {t("fl_kind_vignette")} · 🔍 {t("fl_kind_inspection")} · 🧪 {t("fl_kind_onssa")}</div>
                 <Field label={t("fl_insurer")}><input className="input" value={vForm.insurer} onChange={(e) => setVForm({ ...vForm, insurer: e.target.value })} /></Field>
                 <Field label={t("fl_policy")}><input className="input" value={vForm.insurance_policy} onChange={(e) => setVForm({ ...vForm, insurance_policy: e.target.value })} /></Field>
                 <Field label={t("fl_insurance_expiry")}><input type="date" className="input" value={vForm.insurance_expiry} onChange={(e) => setVForm({ ...vForm, insurance_expiry: e.target.value })} /></Field>
@@ -308,6 +314,12 @@ export default function FlottePage() {
                 <Field label={t("fl_vignette_expiry")}><input type="date" className="input" value={vForm.vignette_expiry} onChange={(e) => setVForm({ ...vForm, vignette_expiry: e.target.value })} /></Field>
                 <Field label={t("fl_vignette_cost")}><input type="number" min={0} className="input" value={vForm.vignette_cost} onChange={(e) => setVForm({ ...vForm, vignette_cost: e.target.value })} /></Field>
                 <Field label={t("fl_inspection_expiry")}><input type="date" className="input" value={vForm.inspection_expiry} onChange={(e) => setVForm({ ...vForm, inspection_expiry: e.target.value })} /></Field>
+                <Field label={t("fl_onssa_number")}><input className="input" value={vForm.onssa_number} onChange={(e) => setVForm({ ...vForm, onssa_number: e.target.value })} /></Field>
+                <Field label={t("fl_onssa_expiry")}>
+                  <input type="date" className="input" value={vForm.onssa_expiry} onChange={(e) => setVForm({ ...vForm, onssa_expiry: e.target.value })} />
+                  <div className="mt-1 text-xs text-muted">{t("fl_onssa_hint")}</div>
+                </Field>
+                <Field label={t("fl_onssa_cost")}><input type="number" min={0} className="input" value={vForm.onssa_cost} onChange={(e) => setVForm({ ...vForm, onssa_cost: e.target.value })} /></Field>
                 <Field label={t("note")}><input className="input" value={vForm.note} onChange={(e) => setVForm({ ...vForm, note: e.target.value })} /></Field>
               </div>
               <div className="mt-4 flex gap-2">
@@ -351,7 +363,7 @@ export default function FlottePage() {
                       {vr.map((r, i) => (
                         <div key={i} className="flex items-center gap-2">
                           <span className={`h-2 w-2 rounded-full ${r.level === "overdue" ? "bg-danger" : r.level === "soon" ? "bg-accent" : "bg-success"}`} />
-                          <span className="flex-1">{KIND_ICON[r.kind]} {t(`fl_kind_${r.kind}`)}</span>
+                          <span className="flex-1">{KIND_ICON[r.kind]} {t(`fl_kind_${r.kind}`)} {r.step != null && <StepBadge step={r.step} />}</span>
                           <span className={`text-xs ${r.level === "overdue" ? "text-danger" : r.level === "soon" ? "text-accent" : "text-muted"}`}>
                             {r.dueDate ? <bdi dir="ltr">{fmtDate(r.dueDate)}</bdi> : null}
                             {r.dueDate && r.dueKm != null ? " · " : ""}
@@ -367,6 +379,7 @@ export default function FlottePage() {
                       <div><div className="text-muted">{t("fl_cost_per_km")}</div><div className="font-semibold">{s.costPerKm != null ? fmtMoney(s.costPerKm, lang) : "—"}</div></div>
                     </div>
                     {v.insurer && <div className="mt-2 text-xs text-muted">🛡️ {v.insurer}{v.insurance_policy && ` · ${v.insurance_policy}`}{Number(v.insurance_cost) > 0 && ` · ${fmtMoney(Number(v.insurance_cost), lang)}/${t("fl_year_short")}`}</div>}
+                    {v.onssa_number && <div className="mt-1 text-xs text-muted">🧪 ONSSA · {v.onssa_number}{Number(v.onssa_cost) > 0 && ` · ${fmtMoney(Number(v.onssa_cost), lang)}/${t("fl_year_short")}`}</div>}
                     {v.note && <div className="mt-1 text-xs text-muted">{v.note}</div>}
 
                     <div className="mt-3 flex flex-wrap gap-3 text-xs">
@@ -516,6 +529,14 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       {children}
     </div>
   );
+}
+
+// Palier de rappel ONSSA : J-30 / J-15 / J-7 / veille / expiré
+function StepBadge({ step }: { step: number | "late" }) {
+  const { t } = useI18n();
+  const label = step === "late" ? t("fl_step_late") : step === 0 ? t("fl_today") : step === 1 ? t("fl_step_eve") : `J-${step}`;
+  const tone = step === "late" || step <= 1 ? "bg-danger text-white" : step === 7 ? "bg-accent text-black" : "bg-accent/20 text-foreground";
+  return <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${tone}`}><bdi dir="ltr">{label}</bdi></span>;
 }
 
 function Kpi({ label, value, sub, accent }: { label: string; value: string; sub?: string; accent?: "success" | "danger" | "accent" }) {

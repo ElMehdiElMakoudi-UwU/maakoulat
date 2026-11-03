@@ -26,7 +26,23 @@ const SOON_KM = 1000;
 
 export const MAINTENANCE_KINDS: VehicleLogKind[] = ["oil", "tires", "brakes", "repair", "other"];
 
-export type ReminderKind = "insurance" | "vignette" | "inspection" | VehicleLogKind;
+export type ReminderKind = "insurance" | "vignette" | "inspection" | "onssa" | VehicleLogKind;
+
+/** Échéances portées par la fiche véhicule (renouvelées en modifiant la fiche). */
+export const ADMIN_KINDS: ReminderKind[] = ["insurance", "vignette", "inspection", "onssa"];
+
+/**
+ * Paliers de rappel ONSSA : J-30, J-15, J-7, la veille (J-1), puis le lendemain
+ * de l'échéance et au-delà (en retard). Renvoie le palier atteint, ou null
+ * s'il reste plus de 30 jours.
+ */
+export const ONSSA_STEPS = [30, 15, 7, 1];
+export function onssaStep(daysLeft: number): number | "late" | null {
+  if (daysLeft < 0) return "late";
+  if (daysLeft === 0) return 0; // jour de l'échéance
+  for (const step of [...ONSSA_STEPS].reverse()) if (daysLeft <= step) return step;
+  return null;
+}
 export type ReminderLevel = "overdue" | "soon" | "ok";
 
 export interface Reminder {
@@ -37,6 +53,7 @@ export interface Reminder {
   daysLeft: number | null;
   kmLeft: number | null;
   level: ReminderLevel;
+  step?: number | "late" | null; // palier ONSSA atteint
 }
 
 function daysBetween(from: string, to: string): number {
@@ -71,11 +88,15 @@ export function buildReminders(vehicles: Vehicle[], logs: VehicleLog[], today: s
       ["insurance", v.insurance_expiry],
       ["vignette", v.vignette_expiry],
       ["inspection", v.inspection_expiry],
+      ["onssa", v.onssa_expiry],
     ];
     for (const [kind, date] of admin) {
       if (!date) continue;
       const daysLeft = daysBetween(today, date);
-      out.push({ vehicleId: v.id, kind, dueDate: date, dueKm: null, daysLeft, kmLeft: null, level: levelOf(daysLeft, null) });
+      out.push({
+        vehicleId: v.id, kind, dueDate: date, dueKm: null, daysLeft, kmLeft: null, level: levelOf(daysLeft, null),
+        ...(kind === "onssa" ? { step: onssaStep(daysLeft) } : {}),
+      });
     }
     for (const kind of MAINTENANCE_KINDS) {
       const l = latest.get(`${v.id}|${kind}`);
@@ -140,9 +161,9 @@ export function vehicleStats(vehicleId: string, logs: VehicleLog[], today: strin
   };
 }
 
-/** Frais fixes mensuels d'un véhicule (assurance + vignette ramenées au mois). */
+/** Frais fixes mensuels d'un véhicule (assurance + vignette + ONSSA ramenées au mois). */
 export function vehicleMonthlyFixed(v: Vehicle): number {
-  return (Number(v.insurance_cost) + Number(v.vignette_cost)) / 12;
+  return (Number(v.insurance_cost) + Number(v.vignette_cost) + Number(v.onssa_cost || 0)) / 12;
 }
 
 export function fuelLiters(distanceKm: number, l100: number): number {

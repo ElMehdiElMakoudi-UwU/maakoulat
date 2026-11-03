@@ -27,10 +27,18 @@ create table if not exists vehicles (
   vignette_expiry       date,
   vignette_cost         numeric(12,2) not null default 0,  -- annuel
   inspection_expiry     date,                              -- visite technique
-  status                text not null default 'active' check (status in ('active','inactive')),
+  onssa_number          text,                              -- autorisation sanitaire ONSSA (annuelle)
+  onssa_expiry          date,
+  onssa_cost            numeric(12,2) not null default 0,
+  status               text not null default 'active' check (status in ('active','inactive')),
   note                  text,
   created_at            timestamptz not null default now()
 );
+
+-- ONSSA (ajout) : si la table existait déjà
+alter table vehicles add column if not exists onssa_number text;
+alter table vehicles add column if not exists onssa_expiry date;
+alter table vehicles add column if not exists onssa_cost numeric(12,2) not null default 0;
 
 create table if not exists vehicle_logs (
   id             uuid primary key default gen_random_uuid(),
