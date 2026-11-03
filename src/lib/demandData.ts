@@ -12,15 +12,18 @@ import type {
 
 const PAGE = 1000;
 
-/** Lit toutes les lignes d'une requête (Supabase limite chaque réponse à 1000 lignes). */
+/** Lit toutes les lignes d'une requête (Supabase limite chaque réponse à 1000 lignes).
+ *  Le plafond réel (« Max rows » du projet) peut être plus bas : on avance donc du nombre
+ *  de lignes réellement reçues et on ne s'arrête que sur une page vide. */
 export async function fetchAll<T>(build: (from: number, to: number) => PromiseLike<{ data: unknown; error: unknown }>): Promise<T[]> {
   const out: T[] = [];
-  for (let from = 0; ; from += PAGE) {
+  for (let from = 0; ; ) {
     const { data, error } = await build(from, from + PAGE - 1);
     if (error) throw error;
     const rows = (data as T[]) ?? [];
+    if (rows.length === 0) break;
     out.push(...rows);
-    if (rows.length < PAGE) break;
+    from += rows.length;
   }
   return out;
 }
