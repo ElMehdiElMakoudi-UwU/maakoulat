@@ -13,8 +13,9 @@ import {
   buildForecast, forecastLows, groupByWeek, weekdayAverages, type ForecastOutflow,
 } from "@/lib/treasuryForecast";
 import { rateMap, totalCommission } from "@/lib/commissions";
+import { loanSchedule } from "@/lib/loans";
 import type {
-  BankStatement, CommissionRate, Seller, Supplier, SupplierCheque, SupplierInvoice, SupplierPayment,
+  BankLoan, BankStatement, CommissionRate, Seller, Supplier, SupplierCheque, SupplierInvoice, SupplierPayment,
 } from "@/lib/types";
 
 const HISTORY_DAYS = 56; // 8 semaines d'historique pour la moyenne des ventes
@@ -48,6 +49,7 @@ export default function TreasuryForecast() {
   const [weekdayAvg, setWeekdayAvg] = useState<number[]>([0, 0, 0, 0, 0, 0, 0]);
   const [supplierOutflows, setSupplierOutflows] = useState<ForecastOutflow[]>([]);
   const [chequeOutflows, setChequeOutflows] = useState<Omit<ForecastOutflow, "kind">[]>([]);
+  const [loanOutflows, setLoanOutflows] = useState<ForecastOutflow[]>([]);
   const [charges, setCharges] = useState<ChargeRow[]>([]);
   const [commissionPerDay, setCommissionPerDay] = useState(0);
   const [lastStatement, setLastStatement] = useState<BankStatement | null>(null);
@@ -58,7 +60,7 @@ export default function TreasuryForecast() {
     const histFrom = addDays(todayStr, -HISTORY_DAYS);
     const salesFrom = histFrom < start ? histFrom : start;
     (async () => {
-      const [salesRes, supRes, invRes, payRes, chargeRes, setRes, bankRes, sellerRes, rateRes, chqRes] = await Promise.all([
+      const [salesRes, supRes, invRes, payRes, chargeRes, setRes, bankRes, sellerRes, rateRes, chqRes, loanRes] = await Promise.all([
         supabase.from("sales").select("sale_date,seller_id,product_id,quantity,sale_price,products(vat_rate,category)")
           .gte("sale_date", salesFrom).lte("sale_date", todayStr),
         supabase.from("suppliers").select("*"),
@@ -71,6 +73,8 @@ export default function TreasuryForecast() {
         supabase.from("commission_rates").select("category,rate"),
         // Chèques en circulation (absents si migration_cheques.sql n'est pas appliquée)
         supabase.from("supplier_cheques").select("*").eq("status", "pending"),
+        // Crédits bancaires (absents si migration_loans.sql n'est pas appliquée)
+        supabase.from("bank_loans").select("*").eq("status", "active"),
       ]);
       const saleRows = (salesRes.data as SaleRow[]) ?? [];
 
@@ -106,10 +110,26 @@ export default function TreasuryForecast() {
       setCommissionPerDay(
         commissionOf(saleRows.filter((s) => s.sale_date >= histFrom && s.sale_date <= yesterday)) / HISTORY_DAYS
       );
+      // Mensualités de crédit : celles du mois jusqu'à aujourd'hui inclus sont déjà prélevées,
+      // les suivantes sortent à leur date d'échéance
+      const loans = loanRes.error ? [] : ((loanRes.data as BankLoan[]) ?? []);
+      const echeances = loans.flatMap((l) =>
+        loanSchedule(l).map((e) => ({ ...e, label: [l.bank, l.label].filter(Boolean).join(" — ") || "—", of: l.duration_months }))
+      );
+      const loansMtd = echeances
+        .filter((e) => e.date >= start && e.date <= todayStr)
+        .reduce((s, e) => s + e.amount, 0);
+      setLoanOutflows(echeances.filter((e) => e.date > todayStr).map((e) => ({
+        date: e.date,
+        amount: e.amount,
+        kind: "loan" as const,
+        label: `${e.label} · ${e.n}/${e.of}`,
+      })));
+
       const settings = setRes.data as { opening_balance: number } | null;
       setOpeningSet(!!settings && Number(settings.opening_balance) !== 0);
       setComputedBalance(
-        (settings ? Number(settings.opening_balance) : 0) + salesMtd - payMtd - chargesMonth - commissionMtd
+        (settings ? Number(settings.opening_balance) : 0) + salesMtd - payMtd - chargesMonth - commissionMtd - loansMtd
       );
 
       // Échéances fournisseurs : reste à payer de chaque facture non soldée.
@@ -148,6 +168,7 @@ export default function TreasuryForecast() {
     const rows: ForecastOutflow[] = [
       ...supplierOutflows,
       ...chequeOutflows.map((c) => ({ ...c, kind: "supplier" as const, label: `${c.label} · ${t("fc_cheque")}` })),
+      ...loanOutflows,
     ];
     let [y, m] = todayStr.split("-").map(Number);
     for (;;) {
@@ -165,7 +186,7 @@ export default function TreasuryForecast() {
       if (amount > 0) rows.push({ date, amount, kind: "charges", label: t("total_charges") });
     }
     return rows;
-  }, [supplierOutflows, chequeOutflows, charges, commissionPerDay, salesPct, horizon, todayStr, t]);
+  }, [supplierOutflows, chequeOutflows, loanOutflows, charges, commissionPerDay, salesPct, horizon, todayStr, t]);
 
   const startBalance =
     balanceOverride !== null && balanceOverride.trim() !== ""
@@ -181,7 +202,7 @@ export default function TreasuryForecast() {
   const { low, firstNegative } = useMemo(() => forecastLows(days), [days]);
 
   const totalIn = days.reduce((s, d) => s + d.inflow, 0);
-  const totalOut = days.reduce((s, d) => s + d.supplierOut + d.chargesOut, 0);
+  const totalOut = days.reduce((s, d) => s + d.supplierOut + d.chargesOut + d.loanOut, 0);
   const endBalance = days.length ? days[days.length - 1].balance : startBalance;
   const horizonEnd = addDays(todayStr, horizon);
   const upcoming = outflows
@@ -325,13 +346,14 @@ export default function TreasuryForecast() {
         {/* Par semaine */}
         <div className="card overflow-x-auto lg:col-span-3">
           <h2 className="px-4 pt-4 font-bold">{t("fc_by_week")}</h2>
-          <table className="mt-2 w-full min-w-[520px] text-sm">
+          <table className="mt-2 w-full min-w-[620px] text-sm">
             <thead>
               <tr className="border-b border-border text-muted">
                 <th className="px-4 py-2 text-start font-medium">{t("fc_week")}</th>
                 <th className="px-4 py-2 text-end font-medium">{t("fc_sales")}</th>
                 <th className="px-4 py-2 text-end font-medium">{t("nav_suppliers")}</th>
                 <th className="px-4 py-2 text-end font-medium">{t("total_charges")}</th>
+                <th className="px-4 py-2 text-end font-medium">{t("fc_loans")}</th>
                 <th className="px-4 py-2 text-end font-medium">{t("fc_end_balance")}</th>
               </tr>
             </thead>
@@ -342,6 +364,7 @@ export default function TreasuryForecast() {
                   <td className="px-4 py-2.5 text-end text-success">+ {fmtMoney(w.inflow, lang)}</td>
                   <td className="px-4 py-2.5 text-end">{w.supplierOut ? `− ${fmtMoney(w.supplierOut, lang)}` : "—"}</td>
                   <td className="px-4 py-2.5 text-end">{w.chargesOut ? `− ${fmtMoney(w.chargesOut, lang)}` : "—"}</td>
+                  <td className="px-4 py-2.5 text-end">{w.loanOut ? `− ${fmtMoney(w.loanOut, lang)}` : "—"}</td>
                   <td className={`px-4 py-2.5 text-end font-semibold ${w.endBalance < 0 ? "text-danger" : ""}`}>
                     {fmtMoney(w.endBalance, lang)}
                   </td>
@@ -365,7 +388,7 @@ export default function TreasuryForecast() {
                     <div className="text-xs text-muted">
                       {o.overdue ? <span className="text-danger">{t("due_overdue")}</span> : shortDate(o.date)}
                       {" · "}
-                      {o.kind === "supplier" ? t("fc_supplier_due") : t("fc_monthly_charges")}
+                      {o.kind === "supplier" ? t("fc_supplier_due") : o.kind === "loan" ? t("fc_loan_due") : t("fc_monthly_charges")}
                     </div>
                   </div>
                   <span className="whitespace-nowrap font-semibold">− {fmtMoney(o.amount, lang)}</span>

@@ -80,6 +80,23 @@ export interface SupplierCheque {
   created_at?: string;
 }
 
+export type LoanStatus = "active" | "closed";
+
+export interface BankLoan {
+  id: string;
+  bank: string;
+  label: string;
+  principal: number;
+  interest_rate: number; // taux annuel %
+  monthly_payment: number;
+  first_due_date: string; // date de la 1re échéance
+  payment_day: number | null; // jour de prélèvement (1–31) ; null = jour de first_due_date
+  duration_months: number;
+  status: LoanStatus;
+  note: string | null;
+  created_at?: string;
+}
+
 export interface Charge {
   id: string;
   label: string;

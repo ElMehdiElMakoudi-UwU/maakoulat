@@ -54,6 +54,8 @@ export interface PlanInput {
   dailyRate: number; // encaissement d'un jour ouvré, déjà multiplié par la part disponible
   restDays: number[];
   cheques: PlannedCheque[];
+  /** Débits fixes non déplaçables (échéances de crédit) : pris en compte dans le solde, jamais déplacés */
+  fixed?: PlannedCheque[];
 }
 
 /** Encaissement attendu un jour donné */
@@ -78,11 +80,15 @@ const effDate = (c: PlannedCheque, today: string) => (c.date < today ? today : c
 
 /** Simulation jour par jour de today à `until` inclus */
 export function simulate(input: PlanInput, until: string): PlanDay[] {
-  const { today, startCash, dailyRate, restDays, cheques } = input;
+  const { today, startCash, dailyRate, restDays, cheques, fixed = [] } = input;
   const outByDate = new Map<string, number>();
   for (const c of cheques) {
     const d = effDate(c, today);
     outByDate.set(d, (outByDate.get(d) ?? 0) + c.amount);
+  }
+  // Les échéances passées sont déjà prélevées
+  for (const f of fixed) {
+    if (f.date >= today) outByDate.set(f.date, (outByDate.get(f.date) ?? 0) + f.amount);
   }
   const days: PlanDay[] = [];
   let bal = startCash;
