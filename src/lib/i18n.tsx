@@ -917,6 +917,10 @@ export const DICT: Dict = {
   recurring: { fr: "Fixe (tous les mois)", ar: "ثابت (كل شهر)" },
   one_off: { fr: "Ponctuelle (ce mois)", ar: "ظرفية (هذا الشهر)" },
   recurring_short: { fr: "Fixe", ar: "ثابت" },
+  confirm_end_charge: { fr: "Arrêter cette charge à partir de ce mois ? Les mois précédents la gardent.", ar: "إيقاف هذه التكلفة ابتداءً من هذا الشهر؟ الأشهر السابقة تحتفظ بها." },
+  charge_until: { fr: "jusqu'à", ar: "حتى" },
+  charge_from: { fr: "depuis", ar: "منذ" },
+  stop_charge: { fr: "Arrêter à partir de ce mois", ar: "إيقاف ابتداءً من هذا الشهر" },
   one_off_short: { fr: "Ponctuelle", ar: "ظرفية" },
 
   // Objectifs

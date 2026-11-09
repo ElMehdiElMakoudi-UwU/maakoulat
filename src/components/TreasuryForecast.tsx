@@ -7,6 +7,7 @@ import {
 import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/lib/i18n";
 import { currentMonth, fmtMoney, monthRange, today, ttc } from "@/lib/format";
+import { chargesTotalFor } from "@/lib/charges";
 import { SERIES, INK, STATUS } from "@/lib/chartColors";
 import { addDays, allocateInvoices } from "@/lib/supplierDues";
 import {
@@ -21,7 +22,7 @@ import type {
 const HISTORY_DAYS = 56; // 8 semaines d'historique pour la moyenne des ventes
 const HORIZONS = [30, 60, 90] as const;
 
-type ChargeRow = { amount: number; month: string | null; active: boolean };
+type ChargeRow = { amount: number; month: string | null; active: boolean; start_month?: string | null; end_month?: string | null };
 type SaleRow = {
   sale_date: string;
   seller_id: string;
@@ -66,7 +67,7 @@ export default function TreasuryForecast() {
         supabase.from("suppliers").select("*"),
         supabase.from("supplier_invoices").select("*"),
         supabase.from("supplier_payments").select("*"),
-        supabase.from("charges").select("amount,month,active"),
+        supabase.from("charges").select("*"),
         supabase.from("monthly_settings").select("opening_balance").eq("month", month).maybeSingle(),
         supabase.from("bank_statements").select("*").order("period_end", { ascending: false, nullsFirst: false }).limit(1),
         supabase.from("sellers").select("id,kind"),
@@ -97,9 +98,7 @@ export default function TreasuryForecast() {
       const payMtd = payments
         .filter((p) => p.pay_date >= start && p.pay_date <= todayStr)
         .reduce((s, p) => s + Number(p.amount), 0);
-      const chargesMonth = chargeRows
-        .filter((c) => c.active && (c.month === month || c.month === null))
-        .reduce((s, c) => s + Number(c.amount), 0);
+      const chargesMonth = chargesTotalFor(chargeRows, month);
       // Commissions vendeurs : du mois en cours (déjà dues) + moyenne journalière pour les mois à venir
       const sellerRows = (sellerRes.data as Pick<Seller, "id" | "kind">[]) ?? [];
       const rm = rateMap((rateRes.data as CommissionRate[]) ?? []);
@@ -179,9 +178,7 @@ export default function TreasuryForecast() {
       if (date > end) break;
       const daysInMonth = new Date(y, m, 0).getDate();
       const amount =
-        charges
-          .filter((c) => c.active && (c.month === month || c.month === null))
-          .reduce((s, c) => s + Number(c.amount), 0) +
+        chargesTotalFor(charges, month) +
         commissionPerDay * daysInMonth * factor;
       if (amount > 0) rows.push({ date, amount, kind: "charges", label: t("total_charges") });
     }

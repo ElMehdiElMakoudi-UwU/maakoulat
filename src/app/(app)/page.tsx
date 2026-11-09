@@ -9,7 +9,8 @@ import type { Product, Seller, Supplier, SupplierInvoice, SupplierPayment } from
 import { allocateInvoices, dueSummary } from "@/lib/supplierDues";
 import { rateMap, totalCommission } from "@/lib/commissions";
 import { totalBonuses, type BonusTier } from "@/lib/bonuses";
-import type { CommissionRate } from "@/lib/types";
+import type { Charge, CommissionRate } from "@/lib/types";
+import { chargesTotalFor } from "@/lib/charges";
 
 interface SaleRow {
   product_id: string;
@@ -73,7 +74,7 @@ export default function DashboardPage() {
           .gte("sale_date", start)
           .lt("sale_date", end),
         supabase.from("supplier_payments").select("amount").gte("pay_date", start).lt("pay_date", end),
-        supabase.from("charges").select("amount,month,active"),
+        supabase.from("charges").select("*"),
         supabase.from("monthly_settings").select("*").eq("month", month).maybeSingle(),
         supabase.from("commission_rates").select("category,rate"),
         supabase.from("seller_bonus_tiers").select("*").eq("month", month),
@@ -93,9 +94,7 @@ export default function DashboardPage() {
       setPayments(
         ((payRes.data as { amount: number }[]) ?? []).reduce((s, r) => s + Number(r.amount), 0)
       );
-      const ch = ((chargeRes.data as { amount: number; month: string | null; active: boolean }[]) ?? [])
-        .filter((c) => c.active && (c.month === month || c.month === null))
-        .reduce((s, r) => s + Number(r.amount), 0);
+      const ch = chargesTotalFor((chargeRes.data as Charge[]) ?? [], month);
       setCharges(ch);
       setLoading(false);
     })();

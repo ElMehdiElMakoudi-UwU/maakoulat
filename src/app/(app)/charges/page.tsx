@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/lib/i18n";
 import { currentMonth, fmtMoney, fmtNum, monthLabel, monthRange } from "@/lib/format";
 import { fetchAll } from "@/lib/demandData";
+import { chargeAppliesTo, prevMonth } from "@/lib/charges";
 import { catKey, commissionsBySeller, rateMap } from "@/lib/commissions";
 import { bonusFor, caHtBySeller, type BonusTier } from "@/lib/bonuses";
 import type { Charge, CommissionRate, Seller } from "@/lib/types";
@@ -33,7 +34,8 @@ export default function ChargesPage() {
       .select("*")
       .or(`month.is.null,month.eq.${month}`)
       .order("sort_order");
-    setCharges((data as Charge[]) ?? []);
+    // fixes : seulement celles dont la période couvre le mois affiché
+    setCharges(((data as Charge[]) ?? []).filter((c) => c.month || chargeAppliesTo({ ...c, active: true }, month)));
 
     // Commissions : ventes du mois + catégories produits + taux
     const { start, end } = monthRange(month);
@@ -60,7 +62,7 @@ export default function ChargesPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [month]);
 
-  const fixedTotal = charges.filter((c) => c.active).reduce((s, c) => s + Number(c.amount), 0);
+  const fixedTotal = charges.filter((c) => chargeAppliesTo(c, month)).reduce((s, c) => s + Number(c.amount), 0);
 
   const commissions = useMemo(
     () => commissionsBySeller(sales, sellers, (id) => productCat[id], rateMap(rates)),
@@ -120,15 +122,26 @@ export default function ChargesPage() {
       label: form.label,
       amount: parseFloat(form.amount) || 0,
       month: form.type === "one_off" ? month : null,
+      // une nouvelle charge fixe ne s'applique qu'à partir du mois affiché
+      start_month: form.type === "one_off" ? null : month,
       sort_order: maxOrder + 1,
     });
     setForm({ label: "", amount: "", type: form.type });
     reload();
   }
-  async function remove(id: string) {
-    if (!confirm(t("confirm_delete"))) return;
-    await supabase.from("charges").delete().eq("id", id);
-    setCharges((old) => old.filter((c) => c.id !== id));
+  async function remove(c: Charge) {
+    // Charge fixe déjà en place avant ce mois : on l'arrête (end_month) au lieu
+    // de la supprimer, pour ne pas fausser les totaux des mois passés.
+    const startedBefore = !c.month && (!c.start_month || c.start_month < month);
+    if (startedBefore) {
+      if (!confirm(t("confirm_end_charge"))) return;
+      const { error } = await supabase.from("charges").update({ end_month: prevMonth(month) }).eq("id", c.id);
+      if (error) { alert(error.message); return; }
+    } else {
+      if (!confirm(t("confirm_delete"))) return;
+      await supabase.from("charges").delete().eq("id", c.id);
+    }
+    setCharges((old) => old.filter((x) => x.id !== c.id));
   }
 
   return (
@@ -190,6 +203,13 @@ export default function ChargesPage() {
                     }`}>
                       {c.month ? t("one_off_short") : t("recurring_short")}
                     </span>
+                    {!c.month && (c.start_month || c.end_month) && (
+                      <span className="ms-2 text-xs text-muted">
+                        {c.start_month && `${t("charge_from")} ${monthLabel(c.start_month, lang)}`}
+                        {c.start_month && c.end_month && " · "}
+                        {c.end_month && `${t("charge_until")} ${monthLabel(c.end_month, lang)}`}
+                      </span>
+                    )}
                   </td>
                   <td className="px-4 py-2 text-end">
                     <input type="number" defaultValue={c.amount} onBlur={(e) => updateField(c, "amount", e.target.value)}
@@ -199,7 +219,8 @@ export default function ChargesPage() {
                     <button onClick={() => toggle(c)} title="on/off" className="me-3 text-muted hover:text-foreground">
                       {c.active ? "🟢" : "⚪"}
                     </button>
-                    <button onClick={() => remove(c.id)} className="text-danger hover:underline">✕</button>
+                    <button onClick={() => remove(c)} className="text-danger hover:underline"
+                      title={!c.month && (!c.start_month || c.start_month < month) ? t("stop_charge") : t("delete")}>✕</button>
                   </td>
                 </tr>
               ))}

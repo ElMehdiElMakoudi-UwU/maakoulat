@@ -104,6 +104,8 @@ export interface Charge {
   month: string | null;
   active: boolean;
   sort_order: number;
+  start_month?: string | null;
+  end_month?: string | null;
 }
 
 export interface CommissionRate {

@@ -7,6 +7,8 @@ import {
 import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/lib/i18n";
 import { currentMonth, fmtMoney, monthLabel, monthRange, ttc } from "@/lib/format";
+import { chargesTotalFor } from "@/lib/charges";
+import type { Charge } from "@/lib/types";
 import { SERIES, INK } from "@/lib/chartColors";
 import TreasuryForecast from "@/components/TreasuryForecast";
 
@@ -33,7 +35,7 @@ export default function TresoreriePage() {
       const [salesRes, payRes, chargeRes, setRes] = await Promise.all([
         supabase.from("sales").select("sale_date,quantity,sale_price,products(vat_rate)").gte("sale_date", start).lt("sale_date", end),
         supabase.from("supplier_payments").select("pay_date,amount").gte("pay_date", start).lt("pay_date", end),
-        supabase.from("charges").select("amount,month,active").or(`month.is.null,month.eq.${month}`),
+        supabase.from("charges").select("*").or(`month.is.null,month.eq.${month}`),
         supabase.from("monthly_settings").select("*").eq("month", month).maybeSingle(),
       ]);
 
@@ -53,8 +55,7 @@ export default function TresoreriePage() {
         pByDay[day] = (pByDay[day] ?? 0) + Number(p.amount);
         pay += Number(p.amount);
       }
-      const ch = ((chargeRes.data as { amount: number; active: boolean }[]) ?? [])
-        .filter((c) => c.active).reduce((s, c) => s + Number(c.amount), 0);
+      const ch = chargesTotalFor((chargeRes.data as Charge[]) ?? [], month);
 
       const settings = setRes.data as { opening_balance: number } | null;
       const op = settings ? Number(settings.opening_balance) : 0;

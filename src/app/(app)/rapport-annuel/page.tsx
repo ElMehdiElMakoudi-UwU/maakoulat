@@ -15,6 +15,7 @@ import {
 import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/lib/i18n";
 import { fmtMoney, fmtNum, fmtPct, today, ttc } from "@/lib/format";
+import { chargesTotalFor } from "@/lib/charges";
 import { fetchAll } from "@/lib/demandData";
 import { SERIES, INK } from "@/lib/chartColors";
 import { rateMap, totalCommission } from "@/lib/commissions";
@@ -104,7 +105,6 @@ export default function RapportAnnuelPage() {
   }, [sales, year, thisYear]);
 
   const monthly = useMemo(() => {
-    const recurring = charges.filter((c) => c.active && c.month === null).reduce((s, c) => s + Number(c.amount), 0);
     const rm = rateMap(rates);
     return MONTHS.map((mm) => {
       const key = `${year}-${mm}`;
@@ -118,6 +118,7 @@ export default function RapportAnnuelPage() {
         qty += s.quantity;
       }
       const oneOff = charges.filter((c) => c.active && c.month === key).reduce((s, c) => s + Number(c.amount), 0);
+      const recurring = chargesTotalFor(charges.filter((c) => c.month === null), key);
       // charges = fixes/ponctuelles + commissions vendeurs (HT × taux catégorie) + primes sur CA
       const commission = totalCommission(monthSales, sellers, (id) => products[id]?.category, rm);
       const bonus = totalBonuses(monthSales, tiers.filter((x) => x.month === key));
