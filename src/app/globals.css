@@ -125,6 +125,10 @@ input[type="number"] {
   .print-area {
     display: block !important;
   }
+  .invoice-page + .invoice-page,
+  * + .invoice-sheet {
+    break-before: page;
+  }
   body {
     background: #fff !important;
   }

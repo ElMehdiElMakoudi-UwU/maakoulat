@@ -43,14 +43,13 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/charges", key: "nav_charges", icon: "💸" },
       { href: "/tva", key: "nav_tva", icon: "🏛️" },
       { href: "/paie", key: "nav_payroll", icon: "🧾" },
-      { href: "/ventilation", key: "nav_ventilation", icon: "🧮" },
+      { href: "/dossier-comptable", key: "nav_dossier", icon: "🗂️" },
     ],
   },
   {
     key: "nav_group_docs",
     icon: "📑",
     items: [
-      { href: "/factures", key: "nav_invoices", icon: "📑" },
       { href: "/bons-commande", key: "nav_orders", icon: "📝" },
     ],
   },
