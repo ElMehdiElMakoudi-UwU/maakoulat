@@ -5,7 +5,10 @@ import { createClient } from "@/lib/supabase/client";
 import { fetchAll } from "@/lib/demandData";
 import { useI18n } from "@/lib/i18n";
 import { currentMonth, fmtMoney, fmtNum, fmtPct, monthLabel, monthRange, ttc } from "@/lib/format";
-import type { Seller } from "@/lib/types";
+import type { Charge, CommissionRate, Seller } from "@/lib/types";
+import { chargeAppliesTo } from "@/lib/charges";
+import { rateMap, totalCommission } from "@/lib/commissions";
+import { totalBonuses, type BonusTier } from "@/lib/bonuses";
 
 interface Prod { id: string; name: string; category: string | null; vat_rate: number }
 interface Sale { product_id: string; seller_id: string; sale_date: string; quantity: number; purchase_price: number; sale_price: number }
@@ -18,19 +21,28 @@ export default function RapportsPage() {
   const [sellers, setSellers] = useState<Seller[]>([]);
   const [products, setProducts] = useState<Prod[]>([]);
   const [sales, setSales] = useState<Sale[]>([]);
+  const [charges, setCharges] = useState<Charge[]>([]);
+  const [rates, setRates] = useState<CommissionRate[]>([]);
+  const [tiers, setTiers] = useState<BonusTier[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     setLoading(true);
     const { start, end } = monthRange(month);
     (async () => {
-      const [selRes, prods, salesRows] = await Promise.all([
+      const [selRes, prods, salesRows, chargeRes, rateRes, tierRes] = await Promise.all([
         supabase.from("sellers").select("*").order("sort_order"),
         fetchAll<Prod>((a, b) => supabase.from("products").select("id,name,category,vat_rate").order("id").range(a, b)),
         fetchAll<Sale>((a, b) =>
           supabase.from("sales").select("product_id,seller_id,sale_date,quantity,purchase_price,sale_price")
             .gte("sale_date", start).lt("sale_date", end).order("id").range(a, b)),
+        supabase.from("charges").select("*").order("sort_order"),
+        supabase.from("commission_rates").select("category,rate"),
+        supabase.from("seller_bonus_tiers").select("*").eq("month", month),
       ]);
+      setCharges(((chargeRes.data as Charge[]) ?? []).filter((c) => chargeAppliesTo(c, month)));
+      setRates((rateRes.data as CommissionRate[]) ?? []);
+      setTiers((tierRes.data as BonusTier[]) ?? []);
       setSellers((selRes.data as Seller[]) ?? []);
       setProducts(prods);
       setSales(salesRows);
@@ -98,6 +110,20 @@ export default function RapportsPage() {
     return { ca, profit, qty, margin: ca ? profit / ca : 0 };
   }, [scoped, products]);
 
+  // Bénéfice net du mois (toute l'entreprise) : même calcul que le tableau de bord
+  const net = useMemo(() => {
+    let profit = 0, ca = 0;
+    for (const s of sales) {
+      ca += s.quantity * ttc(s.sale_price, vatOf(s.product_id));
+      profit += s.quantity * (s.sale_price - s.purchase_price);
+    }
+    const chargesTotal = charges.reduce((sum, c) => sum + Number(c.amount), 0);
+    const commissions = totalCommission(sales, sellers, prodCat, rateMap(rates));
+    const bonuses = totalBonuses(sales, tiers);
+    const result = profit - chargesTotal - commissions - bonuses;
+    return { ca, profit, chargesTotal, commissions, bonuses, result, margin: ca ? result / ca : 0 };
+  }, [sales, sellers, products, charges, rates, tiers]);
+
   function exportCsv() {
     const sep = ";";
     const head = ["Vendeur", "Catégorie", "Produit", "Quantité", "PU achat", "PU vente", "CA", "Bénéfice"];
@@ -110,7 +136,19 @@ export default function RapportsPage() {
     });
     const totalLine = ["", "", "TOTAL", tot.qty, "", "", tot.ca.toFixed(2), tot.profit.toFixed(2)]
       .map((c) => `"${c}"`).join(sep);
-    const csv = "﻿" + [head.map((h) => `"${h}"`).join(sep), ...lines, totalLine].join("\r\n");
+    const netLines = sellerId === "all"
+      ? [
+          "",
+          ...[
+            ["Bénéfice brut", net.profit],
+            ...charges.map((c) => [`Charge : ${c.label}`, -Number(c.amount)] as [string, number]),
+            ["Commissions vendeurs", -net.commissions],
+            ["Primes sur CA", -net.bonuses],
+            ["RÉSULTAT NET", net.result],
+          ].map(([l, v]) => [`"${String(l).replace(/"/g, '""')}"`, `"${Number(v).toFixed(2)}"`].join(sep)),
+        ]
+      : [];
+    const csv = "﻿" + [head.map((h) => `"${h}"`).join(sep), ...lines, totalLine, ...netLines].join("\r\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -179,6 +217,42 @@ export default function RapportsPage() {
               <Stat label={t("items_sold")} value={fmtNum(tot.qty, lang)} />
             </div>
           </div>
+
+          {/* Bénéfice net du mois (toute l'entreprise) */}
+          {sellerId === "all" && (
+            <div className="card p-5">
+              <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+                <h3 className="font-bold">💰 {t("month_profit")}</h3>
+                <span className="text-xs capitalize text-muted">{monthLabel(month, lang)}</span>
+              </div>
+              <div className="grid gap-5 lg:grid-cols-2">
+                <div className="text-sm">
+                  <NetLine label={t("gross_profit")} value={fmtMoney(net.profit, lang)} strong />
+                  {charges.map((c) => (
+                    <NetLine key={c.id} label={c.label} value={`− ${fmtMoney(Number(c.amount), lang)}`} indent />
+                  ))}
+                  <NetLine label={t("fixed_charges")} value={`− ${fmtMoney(net.chargesTotal, lang)}`} />
+                  <NetLine label={t("commissions")} value={`− ${fmtMoney(net.commissions, lang)}`} />
+                  <NetLine label={t("bonuses")} value={`− ${fmtMoney(net.bonuses, lang)}`} />
+                  <div className="mt-2 flex items-center justify-between border-t-2 border-border pt-2.5">
+                    <span className="font-bold">{t("net_result")}</span>
+                    <span className={`text-lg font-bold ${net.result >= 0 ? "text-success" : "text-danger"}`}>
+                      {fmtMoney(net.result, lang)}
+                    </span>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 content-start gap-3">
+                  <Stat label={t("net_result")} value={fmtMoney(net.result, lang)} color={net.result >= 0 ? "text-success" : "text-danger"} />
+                  <Stat label={t("net_margin")} value={fmtPct(net.margin, lang)} />
+                  <Stat label={t("gross_profit")} value={fmtMoney(net.profit, lang)} />
+                  <Stat label={t("total_costs")} value={fmtMoney(net.chargesTotal + net.commissions + net.bonuses, lang)} />
+                </div>
+              </div>
+              <p className="mt-3 text-xs text-muted">
+                {t("net_result")} = {t("gross_profit")} − {t("fixed_charges")} − {t("commissions")} − {t("bonuses")}
+              </p>
+            </div>
+          )}
 
           {/* Vue "Tous" : comparaison vendeurs */}
           {sellerId === "all" && (
@@ -273,6 +347,15 @@ function Stat({ label, value, color }: { label: string; value: string; color?: s
     <div className="rounded-lg border border-border bg-background p-3">
       <div className="text-xs font-medium text-muted">{label}</div>
       <div className={`mt-0.5 text-lg font-bold ${color ?? "text-foreground"}`}>{value}</div>
+    </div>
+  );
+}
+
+function NetLine({ label, value, strong, indent }: { label: string; value: string; strong?: boolean; indent?: boolean }) {
+  return (
+    <div className={`flex items-center justify-between py-1 ${indent ? "ps-4 text-xs text-muted" : ""}`}>
+      <span className={strong ? "font-medium" : ""}>{label}</span>
+      <span className={strong ? "font-semibold text-success" : indent ? "" : "font-semibold"}>{value}</span>
     </div>
   );
 }

@@ -961,6 +961,9 @@ export const DICT: Dict = {
   margin_rate: { fr: "Taux de marge", ar: "نسبة الهامش" },
   daily_detail: { fr: "Détail par jour", ar: "التفصيل اليومي" },
   rank: { fr: "#", ar: "#" },
+  month_profit: { fr: "Bénéfice du mois", ar: "ربح الشهر" },
+  net_margin: { fr: "Marge nette", ar: "الهامش الصافي" },
+  total_costs: { fr: "Total des charges", ar: "مجموع المصاريف" },
   share_hint: { fr: "Astuce : « Imprimer » → « Enregistrer en PDF » pour partager sur WhatsApp.", ar: "نصيحة: «طباعة» ثم «حفظ PDF» للمشاركة عبر واتساب." },
 
   // Rapport annuel
